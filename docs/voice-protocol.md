@@ -1,6 +1,6 @@
 # Voice protocol implementation
 
-The current adapter targets **Amazon Nova 2 Sonic**, not the original Nova Sonic protocol examples. External SDK types and the official references below inform the implementation; an authenticated live phone test remains outstanding.
+The current adapter targets **Amazon Nova 2 Sonic**, not the original Nova Sonic protocol examples. External SDK types and the official references below inform the implementation; Milestone 2 live phone acceptance must be performed by the user.
 
 ## Audio boundary
 
@@ -15,7 +15,7 @@ The current adapter targets **Amazon Nova 2 Sonic**, not the original Nova Sonic
 
 `POST /twilio/incoming` accepts bounded form data and validates its signature and account before returning `<Connect><Stream>`. `GET /twilio/media` upgrades to a WebSocket only after signature validation. Validation uses the configured public origin, never an incoming proxy `Host` value. WebSocket validation permits the equivalent configured HTTPS/WSS forms and their trailing-slash forms; paths remain fixed.
 
-The telephony adapter validates JSON events and stream/call identifiers. It requires inbound mono μ-law at 8 kHz, forwards audio, recognizes stop, and accepts but ignores DTMF and mark events. Nova interruptions send Twilio `clear` and suppress remaining audio from that interrupted Nova completion. Transcripts are not logged or displayed.
+The telephony adapter validates JSON events and stream/call identifiers. It requires inbound mono μ-law at 8 kHz, forwards audio, recognizes stop, and accepts but ignores DTMF and mark events. Nova interruptions send Twilio `clear` once per interrupted completion and suppress its remaining audio. Both `contentEnd: INTERRUPTED` and the assistant-only JSON text interruption marker are handled; a cancelled partial tool block does not close the call. Transcripts are not logged or displayed.
 
 Each call owns its backend session, Nova connection, buffers, timers, and WebSocket. Hangup, malformed input, upstream errors, startup timeout, shutdown, or buffer overflow closes that call and attempts session deletion. Startup audio and outbound transport buffers are bounded. The gateway admits at most four concurrent calls and closes each after seven minutes; it does not roll over to another Nova session. Bedrock documents an eight-minute bidirectional-stream duration in the [API reference](https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithBidirectionalStream.html).
 
@@ -47,8 +47,8 @@ Only `GET /health` is public. All session/tool requests require `Authorization: 
 | `POST /sessions/{session_id}/tools` | `{tool_name, tool_call_id, arguments}` | `{tool_name, tool_call_id, result}` |
 | `DELETE /sessions/{session_id}` | No body | `204`; idempotent |
 
-Tool definitions have `{name, description, input_schema}`. The only tool, `get_member`, accepts `{member_id}` and returns either `{status:"success", member:{...}}` or `{status:"not_found", member_id}`. IDs are case-insensitive and normalize to uppercase. Unknown or extra arguments are rejected. Stored balances are validated integers in USD; the backend returns `annual_maximum_remaining: 800` for `DEMO001` without asking Nova to derive it.
+Tool definitions have `{name, description, input_schema}`. The member tool, `get_member`, accepts `{member_id}` and returns either `{status:"success", member:{...}}` or `{status:"not_found", member_id}`. IDs are case-insensitive and normalize to uppercase. Unknown or extra arguments are rejected. Stored balances are validated integers in USD; the backend returns `annual_maximum_remaining: 800` for `DEMO001` without asking Nova to derive it.
 
 Authentication failures return 401, invalid payloads 422, unknown tools 400, missing/expired sessions 404, capacity exhaustion 503, and unexpected internal failures a sanitized 500. The gateway validates result schemas before returning them to Nova. Backend and gateway logs omit credentials and member facts.
 
-The backend uses one worker and an in-memory session repository; only the latest tool result is retained. This establishes the channel/tool boundary for future text support. Member lookup is behind a Python repository protocol so storage can change later. No identity verification, real member access, insurance calculator, or coverage determination is implemented.
+The backend uses one worker and an in-memory session repository; bounded structured context, latest member result and latest source metadata are retained. This establishes the channel/tool boundary for future text support. Member lookup is behind a Python repository protocol so storage can change later. No identity verification or real member access is implemented. See [Milestone 2](milestone-2.md) for the additional allowlisted tools, repository contracts and deterministic calculator limitations.

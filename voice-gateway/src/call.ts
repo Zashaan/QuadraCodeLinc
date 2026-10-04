@@ -173,8 +173,8 @@ export class VoiceCall {
         code,
         message:
           code === "invalid_tool_input"
-            ? "The tool arguments were invalid. Ask for the demo member ID and try again."
-            : "Member information is unavailable. Tell the caller you cannot retrieve a balance right now. Do not guess.",
+            ? "The tool arguments were invalid. Check the requested tool's schema and ask for the missing or corrected information."
+            : "This tool is temporarily unavailable. Explain that its information cannot currently be verified, and continue the conversation. Do not guess.",
       };
     }
   }

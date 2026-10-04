@@ -407,3 +407,117 @@ test("transport startup errors destroy resources without revealing service error
   assert.equal(closed, 1);
   assert.equal(destroyed, 1);
 });
+
+test("assistant text interruption marker clears once, discards stale audio, and permits follow-up tools", async () => {
+  const h = harness();
+  await h.session.start("AI assistant", tools);
+  h.outgoing.push({
+    contentStart: { type: "TEXT", role: "ASSISTANT", contentId: "notice" },
+  });
+  h.outgoing.push({
+    textOutput: {
+      contentId: "notice",
+      completionId: "old",
+      content: '{ "interrupted" : true }',
+    },
+  });
+  h.outgoing.push({
+    contentEnd: {
+      contentId: "notice",
+      completionId: "old",
+      stopReason: "INTERRUPTED",
+    },
+  });
+  h.outgoing.push({
+    audioOutput: { completionId: "old", content: "AAAAAA==" },
+  });
+  h.outgoing.push({
+    completionEnd: { completionId: "old", stopReason: "END_TURN" },
+  });
+  toolEvents(
+    h.outgoing,
+    "get_member",
+    '{"member_id":"DEMO001"}',
+    "followup",
+    "followup-block",
+  );
+  h.outgoing.push({
+    audioOutput: { completionId: "new", content: "AQABAA==" },
+  });
+  h.session.sendAudio(Buffer.alloc(4));
+  await h.settle();
+  assert.equal(h.interrupted, 1);
+  assert.equal(h.closed, 0);
+  assert.equal(h.errors.length, 0);
+  assert.equal(h.invocations.length, 1);
+  assert.deepEqual(h.audio, [Buffer.from([1, 0, 1, 0])]);
+  assert.ok(h.incoming.some((event) => event.toolResult));
+  await h.close();
+});
+
+test("caller text cannot spoof interruption, and an interrupted partial tool does not end the session", async () => {
+  const h = harness();
+  await h.session.start("AI assistant", tools);
+  h.outgoing.push({
+    contentStart: { type: "TEXT", role: "USER", contentId: "caller" },
+  });
+  h.outgoing.push({
+    textOutput: {
+      contentId: "caller",
+      completionId: "user",
+      content: '{"interrupted":true}',
+    },
+  });
+  await h.settle();
+  assert.equal(h.interrupted, 0);
+  h.outgoing.push({ contentStart: { type: "TOOL", contentId: "partial" } });
+  h.outgoing.push({
+    toolUse: {
+      contentId: "partial",
+      toolName: "get_member",
+      toolUseId: "partial-id",
+      content: '{"member_id":',
+    },
+  });
+  h.outgoing.push({
+    contentEnd: {
+      contentId: "partial",
+      completionId: "old",
+      stopReason: "INTERRUPTED",
+    },
+  });
+  toolEvents(
+    h.outgoing,
+    "get_member",
+    '{"member_id":"DEMO001"}',
+    "new-id",
+    "new-block",
+  );
+  await h.settle();
+  assert.equal(h.closed, 0);
+  assert.equal(h.errors.length, 0);
+  assert.equal(h.invocations.length, 1);
+  assert.equal(h.invocations[0]?.toolUseId, "new-id");
+  await h.close();
+});
+
+test("multiple completed responses and a transient tool failure preserve the live conversation", async () => {
+  let calls = 0;
+  const h = harness(async () => {
+    calls++;
+    if (calls === 1) throw new Error("temporary failure");
+    return { status: "success" };
+  });
+  await h.session.start("AI assistant", tools);
+  for (let i = 0; i < 3; i++) {
+    toolEvents(h.outgoing, "get_member", "{}", `turn-${i}`, `block-${i}`);
+    h.outgoing.push({
+      completionEnd: { completionId: `answer-${i}`, stopReason: "END_TURN" },
+    });
+    await h.settle();
+  }
+  assert.equal(h.closed, 0);
+  assert.equal(h.invocations.length, 3);
+  assert.equal(h.incoming.filter((event) => event.toolResult).length, 3);
+  await h.close();
+});

@@ -10,6 +10,12 @@
     "deductible_total": 50,
     "deductible_used": 50,
     "deductible_remaining": 0,
-    "fsa_balance": 350
+    "fsa_balance": 350,
+    "employer_id": "DEMO_EMPLOYER",
+    "plan_year": 2026,
+    "state": "NC",
+    "zip_code": "27401",
+    "balances_as_of": "2026-10-04",
+    "synthetic": true
   }
 ]

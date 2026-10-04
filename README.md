@@ -1,8 +1,8 @@
 # Abe — Quadra CodeLinc
 
-Abe is an AI dental-benefits assistant built for the Quadra CodeLinc hackathon. This first slice connects phone audio to Amazon Nova 2 Sonic and one deterministic Python tool: `get_member`. The synthetic member `DEMO001` has **$800 remaining** in their demo annual dental maximum; that value comes directly from stored data.
+Abe is an AI dental-benefits assistant built for the Quadra CodeLinc hackathon. Milestone 2 connects phone audio to Amazon Nova 2 Sonic, bounded conversation state, member lookup, plan retrieval, synthetic provider search, and a deterministic Python benefit calculator. The synthetic member `DEMO001` has **$800 remaining** in their demo annual dental maximum; that value comes directly from stored data.
 
-The integration is implemented and covered by automated tests. A real Twilio → Bedrock phone call has **not yet been tested**; it requires local credentials, model access, a tunnel, and a configured Twilio number.
+Milestone 2 includes automated protocol, API, repository, calculator and cross-language contract tests. **Milestone 2 real-phone acceptance remains a user-run test**; automated tests do not prove live conversation or interruption quality.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ Phone → Twilio → Node/TypeScript voice gateway ↔ Nova 2 Sonic
                       Synthetic member repository
 ```
 
-Nova understands and explains; the backend owns instructions, sessions, tools, and member facts. Future calculators and optimizers will perform insurance arithmetic. Abe does not diagnose or determine whether delaying treatment is safe.
+Nova understands and explains; the backend owns instructions, sessions, tools, and member facts. The Python calculator performs insurance arithmetic; scenario optimization remains future work. Abe does not diagnose or determine whether delaying treatment is safe.
 
 ```text
 voice-gateway/src/     HTTP/WebSocket lifecycle, audio codec, telephony and Nova adapters
@@ -26,7 +26,9 @@ docs/                 Voice protocol notes and official references
 scripts/              Local startup, checks and tool smoke test
 ```
 
-No frontend, RAG, DynamoDB, provider search, benefit calculator, optimization, handoff, or AWS infrastructure is included.
+Local synthetic data and local plan retrieval work without AWS data services. Optional read-only DynamoDB and Bedrock Knowledge Base adapters are included. No infrastructure is provisioned. Optimization, FSA calculations, frontend, handoff and deployment remain out of scope.
+
+See [Milestone 2 behavior, demo scenarios, AWS setup and limitations](docs/milestone-2.md).
 
 ## Install
 
@@ -36,7 +38,7 @@ From the directory containing your checkout:
 
 ```bash
 cd QuadraCodeLinc
-python3.12 -m venv backend/.venv
+python3 -m venv backend/.venv
 backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
 npm --prefix voice-gateway ci
 ```
@@ -131,7 +133,7 @@ No AWS or Twilio credentials are needed for automated tests:
 ./scripts/check.sh
 ```
 
-This runs Python tests, Ruff lint/format checks, mypy, gateway tests, Biome checks, TypeScript checks, and the gateway build. With the backend running, verify the real local HTTP tool path:
+This runs Python tests, Ruff lint/format checks, mypy, gateway tests, Biome checks, TypeScript checks, the gateway build, and the offline benefits smoke. Every stage has a time limit. Install both language environments first: gateway contract tests exercise real Python HTTP serialization. Run `./scripts/smoke-benefits.sh` independently for an offline benefits check; it starts no server and needs no AWS credentials. With the backend already running, verify the real local HTTP tool path:
 
 ```bash
 ./scripts/smoke-tool.sh

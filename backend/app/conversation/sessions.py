@@ -1,8 +1,12 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from threading import Lock
 from time import monotonic
 from uuid import uuid4
 
+from pydantic import JsonValue
+
+from app.benefits.models import Source
 from app.tools.get_member import GetMemberResult
 
 
@@ -13,8 +17,19 @@ class Session:
     created_at: float
     last_activity_at: float
     member_id: str | None = None
+    plan_id: str | None = None
+    lock: Lock = field(default_factory=Lock, repr=False)
+    context: dict[str, JsonValue] = field(default_factory=dict)
+    sources: list[Source] = field(default_factory=list)
     last_tool_call_id: str | None = None
     last_tool_result: GetMemberResult | None = None
+
+    def clear_member(self) -> None:
+        self.member_id = None
+        self.plan_id = None
+        self.context = {}
+        self.sources = []
+        self.last_tool_result = None
 
 
 class SessionCapacityError(Exception):

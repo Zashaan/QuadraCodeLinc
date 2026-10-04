@@ -1,0 +1,58 @@
+[
+  {
+    "text": "SYNTHETIC DEMO PLAN CONTENT \u2014 NOT AN ACTUAL LINCOLN PLAN. The annual maximum is the most the plan pays for covered dental care in the plan year, January 1 through December 31, 2026. A remaining maximum is not a cash account or a guarantee of payment. Member balances come from member records.",
+    "source": {
+      "source_id": "demo-plan-2026",
+      "document": "SYNTHETIC DEMO PLAN \u2014 NOT AN ACTUAL LINCOLN PLAN",
+      "plan_id": "DEMO_DENTAL_PPO",
+      "employer": "DEMO_EMPLOYER",
+      "plan_year": 2026,
+      "state": "NC",
+      "doc_type": "summary_of_benefits",
+      "synthetic": true,
+      "section": "Annual maximum"
+    }
+  },
+  {
+    "text": "SYNTHETIC DEMO PLAN CONTENT \u2014 NOT AN ACTUAL LINCOLN PLAN. Crowns are Major at 50% in network and 40% out of network. Fillings are Basic at 80% in network and 60% out of network. Root canals are Endodontic at 80% in network and 60% out of network. Percentages apply after the deductible to the lesser of charge and allowed amount, capped by remaining annual maximum.",
+    "source": {
+      "source_id": "demo-plan-2026",
+      "document": "SYNTHETIC DEMO PLAN \u2014 NOT AN ACTUAL LINCOLN PLAN",
+      "plan_id": "DEMO_DENTAL_PPO",
+      "employer": "DEMO_EMPLOYER",
+      "plan_year": 2026,
+      "state": "NC",
+      "doc_type": "summary_of_benefits",
+      "synthetic": true,
+      "section": "Procedures"
+    }
+  },
+  {
+    "text": "SYNTHETIC DEMO PLAN CONTENT \u2014 NOT AN ACTUAL LINCOLN PLAN. For these synthetic crown, filling, and root canal scenarios only, there is no waiting period and no frequency limitation. This is a simplified demo assumption, not a Lincoln plan rule.",
+    "source": {
+      "source_id": "demo-plan-2026",
+      "document": "SYNTHETIC DEMO PLAN \u2014 NOT AN ACTUAL LINCOLN PLAN",
+      "plan_id": "DEMO_DENTAL_PPO",
+      "employer": "DEMO_EMPLOYER",
+      "plan_year": 2026,
+      "state": "NC",
+      "doc_type": "summary_of_benefits",
+      "synthetic": true,
+      "section": "Waiting and frequency"
+    }
+  },
+  {
+    "text": "SYNTHETIC DEMO PLAN CONTENT \u2014 NOT AN ACTUAL LINCOLN PLAN. The demo deductible is $50 and annual maximum is $2,000. In-network amounts over the allowed amount are contractually written off. Out-of-network dentists may balance bill the difference. Both charge and allowed amount are required for an estimate.",
+    "source": {
+      "source_id": "demo-plan-2026",
+      "document": "SYNTHETIC DEMO PLAN \u2014 NOT AN ACTUAL LINCOLN PLAN",
+      "plan_id": "DEMO_DENTAL_PPO",
+      "employer": "DEMO_EMPLOYER",
+      "plan_year": 2026,
+      "state": "NC",
+      "doc_type": "summary_of_benefits",
+      "synthetic": true,
+      "section": "Network and deductible"
+    }
+  }
+]

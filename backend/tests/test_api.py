@@ -44,7 +44,14 @@ def test_session_prompt_and_allowlisted_tool(client: TestClient) -> None:
     assert "AI benefits assistant" in response["system_prompt"]
     assert "no identity verification" in response["system_prompt"]
     assert "annual_maximum_remaining" in response["system_prompt"]
-    assert [tool["name"] for tool in response["tools"]] == ["resolve_member_id", "get_member"]
+    assert [tool["name"] for tool in response["tools"]] == [
+        "resolve_member_id",
+        "get_member",
+        "update_conversation_context",
+        "retrieve_plan_context",
+        "search_providers",
+        "calculate_benefit",
+    ]
 
 
 def test_end_to_end_get_member_and_cleanup(client: TestClient) -> None:
@@ -213,7 +220,7 @@ def test_session_stores_only_last_result() -> None:
             )
         session = store.get(session_id)
         assert session is not None
-        assert session.member_id == "UNKNOWN"
+        assert session.member_id is None
         assert session.last_tool_result is not None
         assert session.last_tool_result.status == "not_found"
     assert store.get(session_id) is None

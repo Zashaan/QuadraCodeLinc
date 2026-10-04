@@ -252,3 +252,31 @@ test("startup buffer overflow fails safely and bounded resources are released", 
   assert.equal(state.socket.closeCode, 1008);
   assert.equal(state.deleted, 1);
 });
+
+test("barge-in preserves incoming audio, follow-up tool use and exactly-once hangup cleanup", async () => {
+  const state = setup();
+  state.socket.message(start);
+  await setImmediate();
+  state.callbacks.onAudio(Buffer.alloc(4));
+  state.callbacks.onInterrupted();
+  state.socket.message(media);
+  const result = await state.callbacks.onToolUse({
+    toolName: "get_member",
+    toolUseId: "follow-up",
+    input: { member_id: "DEMO001" },
+  });
+  state.callbacks.onAudio(Buffer.from([1, 0]));
+  assert.equal(state.socket.readyState, WebSocket.OPEN);
+  assert.equal(state.deleted, 0);
+  assert.equal(state.novaClosed, 0);
+  assert.equal(state.received.length, 1);
+  assert.equal((result as { status: string }).status, "success");
+  assert.deepEqual(
+    state.socket.sent.map((value) => JSON.parse(value).event),
+    ["media", "clear", "media"],
+  );
+  state.socket.emit("close");
+  await state.call.close();
+  assert.equal(state.deleted, 1);
+  assert.equal(state.novaClosed, 1);
+});

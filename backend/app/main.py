@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app.agent.prompt import SYSTEM_PROMPT
 from app.api.models import (
@@ -18,9 +19,18 @@ from app.api.models import (
     InvokeToolRequest,
     InvokeToolResponse,
 )
+from app.benefits.models import UnavailableResult
+from app.benefits.repository import LocalPlanRulesRepository, PlanRulesRepository
 from app.config import Settings
-from app.conversation.sessions import SessionCapacityError, SessionStore
-from app.members.repository import DemoMemberRepository, MemberRepository
+from app.conversation.sessions import Session, SessionCapacityError, SessionStore
+from app.members.repository import DemoMemberRepository, DynamoDBMemberRepository, MemberRepository
+from app.providers.repository import ProviderRepository, SyntheticProviderRepository
+from app.retrieval.repository import (
+    BedrockKnowledgeBaseRetriever,
+    LocalPlanDocumentRetriever,
+    PlanDocumentRetriever,
+)
+from app.tools.benefits import BenefitsTools
 from app.tools.get_member import GetMemberTool
 from app.tools.resolve_member_id import ResolveMemberIdTool
 
@@ -42,10 +52,28 @@ def create_app(
     settings: Settings | None = None,
     repository: MemberRepository | None = None,
     sessions: SessionStore | None = None,
+    plans: PlanRulesRepository | None = None,
+    retriever: PlanDocumentRetriever | None = None,
+    providers: ProviderRepository | None = None,
 ) -> FastAPI:
     config = settings or Settings.from_environment()
     store = sessions or SessionStore()
-    members = repository or DemoMemberRepository()
+    members = repository or (
+        DemoMemberRepository()
+        if config.member_repository == "synthetic"
+        else DynamoDBMemberRepository(config.dynamodb_member_table, config.aws_region)
+    )
+    benefits = BenefitsTools(
+        members,
+        plans or LocalPlanRulesRepository(),
+        retriever
+        or (
+            LocalPlanDocumentRetriever()
+            if config.rag_provider == "local"
+            else BedrockKnowledgeBaseRetriever(config.bedrock_knowledge_base_id, config.aws_region)
+        ),
+        providers or SyntheticProviderRepository(),
+    )
     member_tool = GetMemberTool(members)
     resolver = ResolveMemberIdTool(members)
 
@@ -95,7 +123,7 @@ def create_app(
         return CreateSessionResponse(
             session_id=session.session_id,
             system_prompt=SYSTEM_PROMPT,
-            tools=[resolver.definition, member_tool.definition],
+            tools=[resolver.definition, member_tool.definition, *benefits.definitions],
         )
 
     @app.delete("/sessions/{session_id}", status_code=204, dependencies=[Depends(authenticate)])
@@ -114,12 +142,45 @@ def create_app(
         session = store.get(str(session_id))
         if session is None:
             raise HTTPException(404, "Session not found")
+        return await run_in_threadpool(execute_tool, session, body)
+
+    def execute_tool(session: Session, body: InvokeToolRequest) -> InvokeToolResponse:
+        if not session.lock.acquire(blocking=False):
+            raise HTTPException(409, "A tool is already running for this session")
+        try:
+            return execute_locked(session, body)
+        finally:
+            session.lock.release()
+
+    def execute_locked(session: Session, body: InvokeToolRequest) -> InvokeToolResponse:
+        if body.tool_name in benefits.arguments:
+            log_event("tool_invoked", tool=body.tool_name)
+            try:
+                benefit_result = benefits.invoke(body.tool_name, body.arguments, session)
+            except ValidationError:
+                raise HTTPException(422, "Invalid tool input or result") from None
+            except Exception:
+                session.sources = []
+                benefit_result = UnavailableResult(
+                    status="unavailable",
+                    reason="This information cannot currently be verified. Please try again.",
+                )
+                log_event("tool_unavailable", tool=body.tool_name)
+            session.last_tool_call_id = body.tool_call_id
+            return InvokeToolResponse(
+                tool_name=body.tool_name, tool_call_id=body.tool_call_id, result=benefit_result
+            )
         if body.tool_name == resolver.name:
             log_event("tool_invoked", tool=resolver.name)
             try:
                 resolution = resolver.invoke(body.arguments)
             except ValidationError:
                 raise HTTPException(422, "Invalid tool input or result") from None
+            except Exception:
+                session.clear_member()
+                raise
+            if resolution.member_id != session.member_id:
+                session.clear_member()
             session.member_id = resolution.member_id
             session.last_tool_call_id = body.tool_call_id
             session.last_tool_result = None
@@ -134,7 +195,15 @@ def create_app(
             result = member_tool.invoke(body.arguments)
         except ValidationError:
             raise HTTPException(422, "Invalid tool input or result") from None
-        session.member_id = result.member.member_id if result.member else result.member_id
+        except Exception:
+            session.clear_member()
+            raise
+        new_member_id = result.member.member_id if result.member else None
+        if new_member_id != session.member_id:
+            session.context = {}
+            session.sources = []
+        session.member_id = new_member_id
+        session.plan_id = result.member.plan_id if result.member else None
         session.last_tool_call_id = body.tool_call_id
         session.last_tool_result = result
         log_event("get_member_completed", status=result.status)

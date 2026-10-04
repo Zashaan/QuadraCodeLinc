@@ -1,0 +1,86 @@
+[
+  {
+    "plan_id": "DEMO_DENTAL_PPO",
+    "employer_id": "DEMO_EMPLOYER",
+    "plan_year": 2026,
+    "starts_on": "2026-01-01",
+    "ends_on": "2026-12-31",
+    "annual_maximum": "2000.00",
+    "deductible": "50.00",
+    "source": {
+      "source_id": "demo-plan-2026",
+      "document": "SYNTHETIC DEMO PLAN \u2014 NOT AN ACTUAL LINCOLN PLAN",
+      "plan_id": "DEMO_DENTAL_PPO",
+      "employer": "DEMO_EMPLOYER",
+      "plan_year": 2026,
+      "state": "NC",
+      "doc_type": "summary_of_benefits",
+      "synthetic": true
+    },
+    "procedures": {
+      "CROWN": {
+        "aliases": [
+          "crown",
+          "dental crown"
+        ],
+        "category": "major",
+        "waiting_period_days": 0,
+        "frequency_verified_unrestricted": true
+      },
+      "FILLING": {
+        "aliases": [
+          "filling",
+          "dental filling"
+        ],
+        "category": "basic",
+        "waiting_period_days": 0,
+        "frequency_verified_unrestricted": true
+      },
+      "ROOT_CANAL": {
+        "aliases": [
+          "root canal",
+          "root canal treatment"
+        ],
+        "category": "endodontic",
+        "waiting_period_days": 0,
+        "frequency_verified_unrestricted": true
+      }
+    },
+    "networks": {
+      "in_network": {
+        "balance_billing": false,
+        "categories": {
+          "major": {
+            "plan_share": "0.50",
+            "deductible_applies": true
+          },
+          "basic": {
+            "plan_share": "0.80",
+            "deductible_applies": true
+          },
+          "endodontic": {
+            "plan_share": "0.80",
+            "deductible_applies": true
+          }
+        }
+      },
+      "out_of_network": {
+        "balance_billing": true,
+        "categories": {
+          "major": {
+            "plan_share": "0.40",
+            "deductible_applies": true
+          },
+          "basic": {
+            "plan_share": "0.60",
+            "deductible_applies": true
+          },
+          "endodontic": {
+            "plan_share": "0.60",
+            "deductible_applies": true
+          }
+        }
+      }
+    }
+  }
+]
