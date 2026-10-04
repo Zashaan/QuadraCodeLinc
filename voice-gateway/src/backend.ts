@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   calculationResultSchema,
   contextResultSchema,
+  optimizationResultSchema,
   providerResultSchema,
   retrievalResultSchema,
 } from "./benefit-schemas.js";
@@ -20,6 +21,7 @@ const toolDefinition = z
       "retrieve_plan_context",
       "search_providers",
       "calculate_benefit",
+      "optimize_benefits",
     ]),
     description: z.string().min(1),
     input_schema: z.record(z.string(), z.unknown()),
@@ -40,11 +42,17 @@ const memberSchema = z
     member_id: z.string().min(1),
     name: z.string().min(1),
     plan_id: z.string().min(1),
-    employer_id: z.string().min(1),
-    plan_year: z.number().int().min(2000).max(2100),
-    state: z.string().regex(/^[A-Z]{2}$/),
-    zip_code: z.string().regex(/^\d{5}$/),
-    balances_as_of: z.iso.date(),
+    employer_id: z.string().min(1).optional(),
+    plan_year: z.number().int().min(2000).max(2100).optional(),
+    state: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .optional(),
+    zip_code: z
+      .string()
+      .regex(/^\d{5}$/)
+      .optional(),
+    balances_as_of: z.iso.date().optional(),
     synthetic: z.literal(true),
     currency: z.literal("USD"),
     annual_maximum: amount,
@@ -53,7 +61,12 @@ const memberSchema = z
     deductible_total: amount,
     deductible_used: amount,
     deductible_remaining: amount,
-    fsa_balance: amount,
+    fsa_balance: amount.optional(),
+    member_status: z.enum(["active", "inactive"]).optional(),
+    coverage_start_date: z.iso.date().optional(),
+    fsa_expires_on: z.iso.date().optional(),
+    orthodontic_lifetime_maximum: amount.optional(),
+    orthodontic_lifetime_used: amount.optional(),
   })
   .strict();
 const resultSchema = z.discriminatedUnion("status", [
@@ -79,6 +92,13 @@ const resolutionSchema = z.discriminatedUnion("status", [
     .strict(),
 ]);
 const toolResponseSchema = z.discriminatedUnion("tool_name", [
+  z
+    .object({
+      tool_name: z.literal("optimize_benefits"),
+      tool_call_id: z.string(),
+      result: optimizationResultSchema,
+    })
+    .strict(),
   z
     .object({
       tool_name: z.literal("update_conversation_context"),

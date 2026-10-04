@@ -22,7 +22,11 @@ from app.api.models import (
     InvokeToolResponse,
 )
 from app.benefits.models import BenefitEstimate, UnavailableResult
-from app.benefits.repository import LocalPlanRulesRepository, PlanRulesRepository
+from app.benefits.repository import (
+    DynamoDBPlanRulesRepository,
+    LocalPlanRulesRepository,
+    PlanRulesRepository,
+)
 from app.config import Settings
 from app.conversation.sessions import Session, SessionCapacityError, SessionStore
 from app.conversations.api import app_router
@@ -35,13 +39,24 @@ from app.conversations.repository import (
     SyntheticConversationRepository,
 )
 from app.conversations.sqlite_repository import SQLiteConversationRepository
+from app.history.repository import (
+    DynamoDBHistoryRepository,
+    HistoryRepository,
+    LocalHistoryRepository,
+)
 from app.members.repository import DemoMemberRepository, DynamoDBMemberRepository, MemberRepository
 from app.models import StrictModel
-from app.providers.repository import ProviderRepository, SyntheticProviderRepository
+from app.providers.repository import (
+    DynamoDBProviderRepository,
+    ProviderRepository,
+    SyntheticProviderRepository,
+)
 from app.retrieval.repository import (
     BedrockKnowledgeBaseRetriever,
     LocalPlanDocumentRetriever,
+    PlanChunk,
     PlanDocumentRetriever,
+    PlanScope,
 )
 from app.tools.benefits import BenefitsTools, ProviderResult
 from app.tools.get_member import GetMemberTool
@@ -61,6 +76,13 @@ def log_event(event: str, **fields: str) -> None:
     logger.info(json.dumps({"event": event, **fields}))
 
 
+class DisabledPlanRetriever:
+    """An explicit missing-KB state, never a silent synthetic fallback."""
+
+    def retrieve(self, query: str, scope: PlanScope) -> list[PlanChunk]:
+        return []
+
+
 def create_app(
     settings: Settings | None = None,
     repository: MemberRepository | None = None,
@@ -70,6 +92,7 @@ def create_app(
     providers: ProviderRepository | None = None,
     conversations: ConversationRepository | None = None,
     text_model: TextModel | None = None,
+    history: HistoryRepository | None = None,
 ) -> FastAPI:
     config = settings or Settings.from_environment()
     store = sessions or SessionStore()
@@ -80,14 +103,43 @@ def create_app(
     )
     benefits = BenefitsTools(
         members,
-        plans or LocalPlanRulesRepository(),
+        plans
+        or (
+            LocalPlanRulesRepository()
+            if config.plan_rules_source == "local"
+            else DynamoDBPlanRulesRepository(
+                config.dynamodb_plan_table,
+                config.dynamodb_coverage_rule_table,
+                config.dynamodb_procedure_table,
+                config.aws_region,
+            )
+        ),
         retriever
         or (
-            LocalPlanDocumentRetriever()
+            DisabledPlanRetriever()
+            if config.rag_provider == "disabled"
+            else LocalPlanDocumentRetriever()
             if config.rag_provider == "local"
-            else BedrockKnowledgeBaseRetriever(config.bedrock_knowledge_base_id, config.aws_region)
+            else BedrockKnowledgeBaseRetriever(
+                config.bedrock_knowledge_base_id,
+                config.aws_region,
+                manifest_s3_uri=config.rag_document_manifest_s3_uri or None,
+            )
         ),
-        providers or SyntheticProviderRepository(),
+        providers
+        or (
+            SyntheticProviderRepository()
+            if config.provider_repository == "synthetic"
+            else DynamoDBProviderRepository(config.dynamodb_provider_table, config.aws_region)
+        ),
+        history
+        or (
+            LocalHistoryRepository()
+            if config.history_repository == "synthetic"
+            else DynamoDBHistoryRepository(
+                config.dynamodb_claim_table, config.dynamodb_authorization_table, config.aws_region
+            )
+        ),
     )
     if conversations is None:
         if config.conversation_repository == "sqlite":
@@ -188,6 +240,7 @@ def create_app(
         try:
             if body.tool_name in {
                 "calculate_benefit",
+                "optimize_benefits",
                 "update_conversation_context",
                 "resolve_member_id",
             }:

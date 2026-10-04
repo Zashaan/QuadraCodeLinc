@@ -42,9 +42,9 @@ class Source(StrictModel):
     section: ShortText | None = None
     page: Annotated[int, Field(ge=1)] | None = None
     plan_id: ShortText
-    employer: ShortText
-    plan_year: Annotated[int, Field(ge=2000, le=2100)]
-    state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")]
+    employer: ShortText | None = None
+    plan_year: Annotated[int, Field(ge=2000, le=2100)] | None = None
+    state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
     doc_type: ShortText
     synthetic: bool
     uri: Annotated[str, Field(min_length=1, max_length=1024)] | None = None
@@ -53,6 +53,8 @@ class Source(StrictModel):
 class CoverageRule(StrictModel):
     plan_share: Rate
     deductible_applies: bool
+    annual_maximum_applies: bool = True
+    orthodontic_lifetime_maximum_applies: bool = False
 
 
 class NetworkRule(StrictModel):
@@ -64,17 +66,24 @@ class ProcedureRule(StrictModel):
     aliases: Annotated[list[ShortText], Field(min_length=1, max_length=20)]
     category: ShortText
     # None means unknown, not no restriction. Unsupported restrictions fail closed.
-    waiting_period_days: Annotated[int, Field(ge=0)] | None
+    waiting_period_days: Annotated[int, Field(ge=0)] | None = None
+    waiting_period_months: Annotated[int, Field(ge=0, le=120)] | None = None
+    preauthorization_required: bool | None = False
+    preauthorization_threshold: Money | None = None
+    frequency_count: Annotated[int, Field(ge=1, le=100)] | None = None
+    frequency_months: Annotated[int, Field(ge=1, le=1200)] | None = None
+    frequency_per_tooth: bool = False
+    required_specialty: ShortText | None = None
     frequency_limit: ShortText | None = None
     frequency_verified_unrestricted: bool = False
 
 
 class PlanRules(StrictModel):
     plan_id: ShortText
-    employer_id: ShortText
-    plan_year: int
-    starts_on: date
-    ends_on: date
+    employer_id: ShortText | None = None
+    plan_year: int | None = None
+    starts_on: date | None = None
+    ends_on: date | None = None
     annual_maximum: Money
     deductible: Money
     procedures: dict[str, ProcedureRule]
@@ -83,7 +92,16 @@ class PlanRules(StrictModel):
 
     @model_validator(mode="after")
     def coherent(self) -> "PlanRules":
-        if self.starts_on > self.ends_on or self.starts_on.year != self.plan_year:
+        if (self.starts_on is None) != (self.ends_on is None):
+            raise ValueError("Incomplete plan dates")
+        if (
+            self.starts_on is not None
+            and self.ends_on is not None
+            and (
+                self.starts_on > self.ends_on
+                or (self.plan_year is not None and self.starts_on.year != self.plan_year)
+            )
+        ):
             raise ValueError("Invalid plan dates")
         if (self.source.plan_id, self.source.employer, self.source.plan_year) != (
             self.plan_id,
@@ -122,6 +140,8 @@ class BenefitInput(StrictModel):
     fee_source: ShortText
     allowed_amount_source: ShortText
     network_source: ShortText
+    provider_id: ShortText | None = None
+    tooth_id: ShortText | None = None
 
 
 class BenefitEstimate(StrictModel):
@@ -129,7 +149,7 @@ class BenefitEstimate(StrictModel):
     member_id: str
     plan_id: str
     treatment_date: date
-    balances_as_of: date
+    balances_as_of: date | None
     procedure: str
     network_status: Network
     provider_charge: Money
@@ -142,6 +162,8 @@ class BenefitEstimate(StrictModel):
     contractual_write_off: Money
     annual_maximum_consumed: Money
     annual_maximum_remaining_afterward: Money
+    deductible_remaining_afterward: Money
+    orthodontic_lifetime_remaining_afterward: Money | None = None
     steps: list[str]
     assumptions: list[str]
     warnings: list[str]

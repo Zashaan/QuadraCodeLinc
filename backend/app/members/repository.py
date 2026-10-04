@@ -1,5 +1,4 @@
 from datetime import date
-from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol
 
@@ -15,11 +14,11 @@ class Member(StrictModel):
     member_id: MemberId
     name: Annotated[str, Field(min_length=1, max_length=100)]
     plan_id: Annotated[str, Field(min_length=1, max_length=100)]
-    employer_id: str
-    plan_year: Annotated[int, Field(ge=2000, le=2100)]
-    state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")]
-    zip_code: Annotated[str, Field(pattern=r"^[0-9]{5}$")]
-    balances_as_of: date
+    employer_id: str | None = None
+    plan_year: Annotated[int, Field(ge=2000, le=2100)] | None = None
+    state: Annotated[str, Field(pattern=r"^[A-Z]{2}$")] | None = None
+    zip_code: Annotated[str, Field(pattern=r"^[0-9]{5}$")] | None = None
+    balances_as_of: date | None = None
     synthetic: Literal[True]
     currency: Literal["USD"]
     annual_maximum: Money
@@ -28,7 +27,15 @@ class Member(StrictModel):
     deductible_total: Money
     deductible_used: Money
     deductible_remaining: Money
-    fsa_balance: Money
+    fsa_balance: Money | None = None
+    # Absent AWS facts remain unknown; optional additions do not alter legacy payloads.
+    member_status: Literal["active", "inactive"] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    coverage_start_date: date | None = Field(default=None, exclude_if=lambda v: v is None)
+    fsa_expires_on: date | None = Field(default=None, exclude_if=lambda v: v is None)
+    orthodontic_lifetime_maximum: Money | None = Field(default=None, exclude_if=lambda v: v is None)
+    orthodontic_lifetime_used: Money | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class MemberRepository(Protocol):
@@ -69,15 +76,22 @@ class DynamoDBMemberRepository:
         item = self._table.get_item(Key={"member_id": member_id}, ConsistentRead=True).get("Item")
         if item is None:
             return None
-        # DynamoDB numbers deserialize as Decimal; reject fractional stored integer facts.
-        item = {
-            key: int(value)
-            if isinstance(value, Decimal) and value == value.to_integral_value()
-            else value
-            for key, value in item.items()
-        }
-        if isinstance(item.get("balances_as_of"), str):
-            item["balances_as_of"] = date.fromisoformat(item["balances_as_of"])
+        from app.aws_data import normalize_numbers
+
+        item = normalize_numbers(item)
+        if "first_name" in item or "is_synthetic" in item:
+            fields = {key: value for key, value in item.items() if key in Member.model_fields}
+            fields.update(
+                name=f"{item['first_name']} {item['last_name']}",
+                synthetic=item["is_synthetic"],
+                currency=item.get("currency", "USD"),
+                deductible_total=item["deductible"],
+                deductible_used=item["deductible_met"],
+            )
+            item = fields
+        for key in ("balances_as_of", "coverage_start_date", "fsa_expires_on"):
+            if isinstance(item.get(key), str):
+                item[key] = date.fromisoformat(item[key])
         member = Member.model_validate(item)
         if member.member_id != member_id:
             raise ValueError("Mismatched repository member")

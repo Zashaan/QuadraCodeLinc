@@ -51,6 +51,7 @@ def test_session_prompt_and_allowlisted_tool(client: TestClient) -> None:
         "retrieve_plan_context",
         "search_providers",
         "calculate_benefit",
+        "optimize_benefits",
     ]
 
 

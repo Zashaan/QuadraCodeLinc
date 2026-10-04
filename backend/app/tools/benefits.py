@@ -16,8 +16,11 @@ from app.benefits.models import (
 )
 from app.benefits.repository import PlanRulesRepository
 from app.conversation.sessions import Session
+from app.history.repository import HistoryRepository, LocalHistoryRepository
 from app.members.repository import Member, MemberRepository
 from app.models import StrictModel
+from app.optimization.models import OptimizationRequest, OptimizationResult
+from app.optimization.optimizer import optimize_benefits
 from app.providers.repository import Provider, ProviderRepository, ProviderSearch
 from app.retrieval.repository import PlanChunk, PlanDocumentRetriever, PlanScope
 from app.tools.base import ToolDefinition
@@ -61,6 +64,7 @@ class CalculateArguments(StrictModel):
     procedure: ShortText | None = None
     treatment_date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = None
     provider_id: ShortText | None = None
+    tooth_id: ShortText | None = None
     # Network and allowed amount are repository facts, never invented model arguments.
     # Caller quotes can supply the charge, but cannot silently replace an allowed amount.
     provider_charge: Money | None = None
@@ -72,7 +76,12 @@ class CalculateArguments(StrictModel):
 
 
 BenefitToolResult = (
-    BenefitEstimate | UnavailableResult | RetrievalResult | ProviderResult | ContextResult
+    BenefitEstimate
+    | UnavailableResult
+    | RetrievalResult
+    | ProviderResult
+    | ContextResult
+    | OptimizationResult
 )
 
 
@@ -83,6 +92,7 @@ class BenefitsTools:
         plans: PlanRulesRepository,
         retriever: PlanDocumentRetriever,
         providers: ProviderRepository,
+        history: HistoryRepository | None = None,
     ) -> None:
         self.members, self.plans, self.retriever, self.providers = (
             members,
@@ -90,13 +100,28 @@ class BenefitsTools:
             retriever,
             providers,
         )
+        self.history = history or LocalHistoryRepository()
         self.arguments: dict[str, type[StrictModel]] = {
             "update_conversation_context": ContextUpdate,
             "retrieve_plan_context": RetrieveArguments,
             "search_providers": ProviderSearch,
             "calculate_benefit": CalculateArguments,
+            "optimize_benefits": OptimizationRequest,
         }
         descriptions = {
+            "optimize_benefits": (
+                "Build bounded options and rank with deterministic Python using the validated "
+                "member. "
+                "Use for when/where/pay-less questions; requires procedure and requested_date. "
+                "Pass explicit radius/deadline/network as hard constraints and user priorities "
+                "as preferences. "
+                "Never assume delaying is safe: delayed dates require reported dentist approval "
+                "and safe-until date. "
+                "Do not invent fees, allowed amounts, availability, distance, future coverage, "
+                "FSA or approval. "
+                "Caller fee_quotes must be explicitly reported. Ask one returned missing field "
+                "at a time."
+            ),
             "update_conversation_context": (
                 "Remember changed intent, procedure, provider, ZIP, up to five constraints "
                 "or latest correction. Omitted fields stay; null clears a field. "
@@ -133,6 +158,19 @@ class BenefitsTools:
     def invoke(
         self, name: str, arguments: dict[str, JsonValue], session: Session
     ) -> BenefitToolResult:
+        if name == "optimize_benefits":
+            arguments = dict(arguments)
+            if not arguments.get("procedure") and session.context.get("procedure"):
+                arguments["procedure"] = session.context["procedure"]
+            if not arguments.get("origin_zip") and session.context.get("zip_code"):
+                arguments["origin_zip"] = session.context["zip_code"]
+            missing = [key for key in ("procedure", "requested_date") if not arguments.get(key)]
+            if missing:
+                return UnavailableResult(
+                    status="missing_information",
+                    reason="Please provide the next missing scenario fact.",
+                    missing_fields=missing,
+                )
         args = self.arguments[name].model_validate(arguments)
         if isinstance(args, ContextUpdate):
             current = dict(session.context)
@@ -176,6 +214,38 @@ class BenefitsTools:
             return UnavailableResult(
                 status="unverified", reason="Structured plan rules are unavailable."
             )
+        if isinstance(args, OptimizationRequest):
+            procedure = plan.procedure_id(args.procedure)
+            if procedure is None:
+                return UnavailableResult(
+                    status="unverified", reason="Procedure mapping is unavailable."
+                )
+            candidates = self.providers.search(
+                member.plan_id,
+                ProviderSearch(
+                    procedure=procedure,
+                    network_status=args.constraints.required_network,
+                    specialty=args.constraints.required_specialty
+                    or plan.procedures[procedure].required_specialty,
+                ),
+            )
+            quoted = [
+                self.providers.get_provider(q.provider_id, member.plan_id) for q in args.fee_quotes
+            ]
+            unique_candidates = {p.provider_id: p for p in quoted if p is not None}
+            for candidate in candidates:
+                if len(unique_candidates) >= 10:
+                    break
+                unique_candidates.setdefault(candidate.provider_id, candidate)
+            candidates = list(unique_candidates.values())
+            session.context["procedure"] = procedure
+            session.sources = []
+            optimization = optimize_benefits(
+                member, plan, candidates, args, history=self.history.get_history(member.member_id)
+            )
+            if optimization.best_overall:
+                session.sources = optimization.best_overall.estimate.sources
+            return optimization
         if isinstance(args, ProviderSearch):
             if "zip_code" not in args.model_fields_set and session.context.get("zip_code"):
                 args = ProviderSearch.model_validate(
@@ -218,6 +288,12 @@ class BenefitsTools:
             session.context.pop("provider_id", None)
             return UnavailableResult(
                 status="unverified", reason="Provider facts are unavailable for this plan."
+            )
+        if provider and provider.network_scope != "plan":
+            return UnavailableResult(
+                status="missing_information",
+                reason="Provider participation in this member's plan has not been verified.",
+                missing_fields=["plan_network_status"],
             )
         if provider:
             session.context["provider_id"] = provider.provider_id
@@ -312,7 +388,10 @@ class BenefitsTools:
                 if fee
                 else "unavailable",
                 network_source=network_source,
+                provider_id=provider.provider_id if provider else None,
+                tooth_id=args.tooth_id,
             ),
+            history=self.history.get_history(member.member_id),
         )
         session.context["procedure"] = procedure
         if provider:

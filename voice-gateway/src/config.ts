@@ -23,7 +23,7 @@ const environment = z.object({
     .regex(/^[a-z]{2}(-[a-z]+)+-\d$/)
     .default("us-east-1"),
   NOVA_MODEL_ID: z.string().min(1).default("amazon.nova-2-sonic-v1:0"),
-  NOVA_VOICE_ID: z.string().min(1).default("tiffany"),
+  NOVA_VOICE_ID: z.string().min(1).default("matthew"),
   ABE_BACKEND_URL: origin.default("http://127.0.0.1:8000").refine((value) => {
     const url = new URL(value);
     return (

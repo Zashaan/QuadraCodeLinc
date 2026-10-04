@@ -31,6 +31,7 @@ def main() -> None:
                 ("calculate_benefit", {"treatment_date": "2026-11-01"}),
                 ("calculate_benefit", {"procedure": "root canal", "provider_id": "DEMO_P3", "treatment_date": "2026-11-01"}),
                 ("retrieve_plan_context", {"query": "orthodontic braces"}),
+                ("optimize_benefits", {"procedure": "crown", "requested_date": "2026-11-01"}),
             ]
             for index, (name, args) in enumerate(calls):
                 body = {"tool_name": name, "tool_call_id": f"smoke-{index}", "arguments": args}
@@ -42,6 +43,8 @@ def main() -> None:
             assert results[5]["result"]["estimated_member_payment"] == "600.00"
             assert results[6]["result"]["plan_payment"] == "800.00"
             assert results[7]["result"]["status"] == "unverified"
+            assert results[8]["result"]["status"] == "optimized"
+            assert results[8]["result"]["best_overall"]["constraint_status"] == "passed"
         finally:
             assert client.delete(f"/sessions/{sid}", headers=headers).status_code == 204
     if "--contracts" in sys.argv:
