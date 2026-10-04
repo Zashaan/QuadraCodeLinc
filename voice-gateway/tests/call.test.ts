@@ -280,3 +280,55 @@ test("barge-in preserves incoming audio, follow-up tool use and exactly-once han
   assert.equal(state.deleted, 1);
   assert.equal(state.novaClosed, 1);
 });
+
+test("transcript saving does not block audio and finishes before session deletion", async () => {
+  let finishSave: () => void = () => {};
+  const order: string[] = [];
+  const state = setup({
+    appendTranscripts: async (_id, events) => {
+      assert.equal(events[0]?.text, "Hello Abe");
+      await new Promise<void>((resolve) => {
+        finishSave = resolve;
+      });
+      order.push("saved");
+    },
+    deleteSession: async () => {
+      order.push("deleted");
+    },
+  });
+  state.socket.message(start);
+  await setImmediate();
+  state.callbacks.onTranscript?.({
+    event_id: "text-1",
+    role: "user",
+    text: "Hello Abe",
+  });
+  state.callbacks.onAudio(Buffer.alloc(4));
+  assert.equal(state.socket.sent.length, 1);
+  const closed = state.call.close();
+  finishSave();
+  await closed;
+  assert.deepEqual(order, ["saved", "deleted"]);
+});
+
+test("failed transcript writes mark the call partial without interrupting it", async () => {
+  const partial: boolean[] = [];
+  const state = setup({
+    appendTranscripts: async (_id, _events, incomplete) => {
+      if (!incomplete) throw new Error("Storage unavailable");
+      partial.push(incomplete);
+    },
+  });
+  state.socket.message(start);
+  await setImmediate();
+  state.callbacks.onTranscript?.({
+    event_id: "text-1",
+    role: "user",
+    text: "Hello Abe",
+  });
+  await setImmediate();
+  assert.equal(state.socket.readyState, WebSocket.OPEN);
+  await state.call.close();
+  assert.deepEqual(partial, [true]);
+  assert.equal(state.deleted, 1);
+});

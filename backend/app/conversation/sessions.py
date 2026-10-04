@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from pydantic import JsonValue
 
-from app.benefits.models import Source
+from app.benefits.models import BenefitEstimate, Source
+from app.providers.repository import Provider
 from app.tools.get_member import GetMemberResult
 
 
@@ -18,11 +19,15 @@ class Session:
     last_activity_at: float
     member_id: str | None = None
     plan_id: str | None = None
+    channel: str = "voice"
+    conversation_id: str | None = None
     lock: Lock = field(default_factory=Lock, repr=False)
     context: dict[str, JsonValue] = field(default_factory=dict)
     sources: list[Source] = field(default_factory=list)
     last_tool_call_id: str | None = None
     last_tool_result: GetMemberResult | None = None
+    last_estimate: BenefitEstimate | None = None
+    last_providers: list[Provider] = field(default_factory=list)
 
     def clear_member(self) -> None:
         self.member_id = None
@@ -30,6 +35,8 @@ class Session:
         self.context = {}
         self.sources = []
         self.last_tool_result = None
+        self.last_estimate = None
+        self.last_providers = []
 
 
 class SessionCapacityError(Exception):

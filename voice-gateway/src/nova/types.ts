@@ -11,11 +11,18 @@ export interface ToolInvocation {
 }
 
 export interface NovaCallbacks {
+  onTranscript?: (event: TranscriptEvent) => void;
   onAudio: (pcm: Buffer) => void;
   onInterrupted: () => void;
   onToolUse: (invocation: ToolInvocation) => Promise<unknown>;
   onError: (error: Error) => void;
   onClose: () => void;
+}
+
+export interface TranscriptEvent {
+  event_id: string;
+  role: "user" | "assistant";
+  text: string;
 }
 
 export interface NovaSession {

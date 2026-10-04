@@ -3,13 +3,15 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
+from fastapi.staticfiles import StaticFiles
+from pydantic import Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app.agent.prompt import SYSTEM_PROMPT
@@ -19,18 +21,29 @@ from app.api.models import (
     InvokeToolRequest,
     InvokeToolResponse,
 )
-from app.benefits.models import UnavailableResult
+from app.benefits.models import BenefitEstimate, UnavailableResult
 from app.benefits.repository import LocalPlanRulesRepository, PlanRulesRepository
 from app.config import Settings
 from app.conversation.sessions import Session, SessionCapacityError, SessionStore
+from app.conversations.api import app_router
+from app.conversations.chat import BedrockTextModel, TextChat, TextModel
+from app.conversations.inbox import Inbox
+from app.conversations.recap import build_actions, build_recap
+from app.conversations.repository import (
+    ConversationRepository,
+    DynamoDBConversationRepository,
+    SyntheticConversationRepository,
+)
+from app.conversations.sqlite_repository import SQLiteConversationRepository
 from app.members.repository import DemoMemberRepository, DynamoDBMemberRepository, MemberRepository
+from app.models import StrictModel
 from app.providers.repository import ProviderRepository, SyntheticProviderRepository
 from app.retrieval.repository import (
     BedrockKnowledgeBaseRetriever,
     LocalPlanDocumentRetriever,
     PlanDocumentRetriever,
 )
-from app.tools.benefits import BenefitsTools
+from app.tools.benefits import BenefitsTools, ProviderResult
 from app.tools.get_member import GetMemberTool
 from app.tools.resolve_member_id import ResolveMemberIdTool
 
@@ -55,6 +68,8 @@ def create_app(
     plans: PlanRulesRepository | None = None,
     retriever: PlanDocumentRetriever | None = None,
     providers: ProviderRepository | None = None,
+    conversations: ConversationRepository | None = None,
+    text_model: TextModel | None = None,
 ) -> FastAPI:
     config = settings or Settings.from_environment()
     store = sessions or SessionStore()
@@ -74,6 +89,19 @@ def create_app(
         ),
         providers or SyntheticProviderRepository(),
     )
+    if conversations is None:
+        if config.conversation_repository == "sqlite":
+            db_path = Path(config.conversation_db_path)
+            if not db_path.is_absolute():
+                db_path = Path(__file__).resolve().parents[2] / db_path
+            conversations = SQLiteConversationRepository(db_path)
+        elif config.conversation_repository == "dynamodb":
+            conversations = DynamoDBConversationRepository(
+                config.dynamodb_conversation_table, config.aws_region
+            )
+        else:
+            conversations = SyntheticConversationRepository()
+    inbox = Inbox(conversations)
     member_tool = GetMemberTool(members)
     resolver = ResolveMemberIdTool(members)
 
@@ -119,6 +147,7 @@ def create_app(
             session = store.create(body.call_id)
         except SessionCapacityError:
             raise HTTPException(503, "Session capacity reached") from None
+        await run_in_threadpool(inbox.start_voice, session)
         log_event("session_created")
         return CreateSessionResponse(
             session_id=session.session_id,
@@ -128,6 +157,15 @@ def create_app(
 
     @app.delete("/sessions/{session_id}", status_code=204, dependencies=[Depends(authenticate)])
     async def delete_session(session_id: UUID) -> Response:
+        session = store.get(str(session_id))
+        if session:
+
+            def finish_voice() -> None:
+                with session.lock:
+                    recap = build_recap(session)
+                    inbox.complete_voice(session, recap, build_actions(recap))
+
+            await run_in_threadpool(finish_voice)
         store.delete(str(session_id))
         log_event("session_deleted")
         return Response(status_code=204)
@@ -148,7 +186,26 @@ def create_app(
         if not session.lock.acquire(blocking=False):
             raise HTTPException(409, "A tool is already running for this session")
         try:
-            return execute_locked(session, body)
+            if body.tool_name in {
+                "calculate_benefit",
+                "update_conversation_context",
+                "resolve_member_id",
+            }:
+                session.last_estimate = None
+            result = execute_locked(session, body)
+            if isinstance(result.result, BenefitEstimate):
+                session.last_estimate = result.result
+                provider_id = session.context.get("provider_id")
+                provider = (
+                    benefits.providers.get_provider(str(provider_id), result.result.plan_id)
+                    if provider_id
+                    else None
+                )
+                if provider:
+                    session.last_providers = [provider]
+            elif isinstance(result.result, ProviderResult):
+                session.last_providers = result.result.providers
+            return result
         finally:
             session.lock.release()
 
@@ -200,8 +257,7 @@ def create_app(
             raise
         new_member_id = result.member.member_id if result.member else None
         if new_member_id != session.member_id:
-            session.context = {}
-            session.sources = []
+            session.clear_member()
         session.member_id = new_member_id
         session.plan_id = result.member.plan_id if result.member else None
         session.last_tool_call_id = body.tool_call_id
@@ -213,4 +269,46 @@ def create_app(
             result=result,
         )
 
+    @app.post(
+        "/sessions/{session_id}/transcripts", status_code=204, dependencies=[Depends(authenticate)]
+    )
+    async def transcripts(session_id: UUID, body: TranscriptBatch) -> Response:
+        session = store.get(str(session_id))
+        if session is None:
+            raise HTTPException(404, "Session not found")
+
+        def persist() -> None:
+            for event in body.events:
+                inbox.append_transcript(session, event.role, event.text, event.event_id)
+            if body.incomplete and session.conversation_id:
+                current = inbox.repository.get_conversation("DEMO001", session.conversation_id)
+                if current:
+                    inbox.repository.put_conversation(
+                        current.model_copy(update={"status": "partial"})
+                    )
+
+        await run_in_threadpool(persist)
+        return Response(status_code=204)
+
+    chat = TextChat(
+        inbox,
+        text_model or BedrockTextModel(config.nova_text_model_id, config.aws_region),
+        [resolver.definition, member_tool.definition, *benefits.definitions],
+        execute_tool,
+    )
+    app.include_router(app_router(config, inbox, chat))
+    frontend = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if frontend.is_dir():
+        app.mount("/", StaticFiles(directory=frontend, html=True), name="companion")
     return app
+
+
+class TranscriptEvent(StrictModel):
+    event_id: Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
+    role: Literal["user", "assistant"]
+    text: Annotated[str, Field(min_length=1, max_length=4000)]
+
+
+class TranscriptBatch(StrictModel):
+    events: Annotated[list[TranscriptEvent], Field(max_length=20)]
+    incomplete: bool = False

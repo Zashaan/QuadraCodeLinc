@@ -4,14 +4,16 @@ Abe is an AI dental-benefits assistant built for the Quadra CodeLinc hackathon. 
 
 Milestone 2 includes automated protocol, API, repository, calculator and cross-language contract tests. **Milestone 2 real-phone acceptance remains a user-run test**; automated tests do not prove live conversation or interruption quality.
 
+The new [companion app](docs/companion-app.md) adds a responsive conversation inbox, persistent call transcripts, verified recap cards, and text chat using the same Abe tools.
+
 ## Architecture
 
 ```text
-Phone → Twilio → Node/TypeScript voice gateway ↔ Nova 2 Sonic
-                              ↓ tool requests
-                      Python/FastAPI Abe core
+Phone → Twilio → Node/TypeScript gateway ↔ Nova 2 Sonic
+                              ↓ tools + final transcripts
+React companion → Python/FastAPI Abe core ↔ Nova text
                               ↓
-                      Synthetic member repository
+                  Shared benefits tools + conversation storage
 ```
 
 Nova understands and explains; the backend owns instructions, sessions, tools, and member facts. The Python calculator performs insurance arithmetic; scenario optimization remains future work. Abe does not diagnose or determine whether delaying treatment is safe.
@@ -21,12 +23,13 @@ voice-gateway/src/     HTTP/WebSocket lifecycle, audio codec, telephony and Nova
 voice-gateway/tests/   Protocol, codec, authentication and failure-path tests
 backend/app/          Agent instructions, sessions, typed tools and member repository
 backend/tests/        API, validation, stored-balance and session-limit tests
+frontend/             React companion: inbox, call details, transcript and text chat
 data/demo/            Synthetic JSON member fixture
 docs/                 Voice protocol notes and official references
 scripts/              Local startup, checks and tool smoke test
 ```
 
-Local synthetic data and local plan retrieval work without AWS data services. Optional read-only DynamoDB and Bedrock Knowledge Base adapters are included. No infrastructure is provisioned. Optimization, FSA calculations, frontend, handoff and deployment remain out of scope.
+Local synthetic data and local plan retrieval work without AWS data services. Optional read-only DynamoDB and Bedrock Knowledge Base adapters are included. No infrastructure is provisioned. Optimization, FSA calculations, handoff and deployment remain out of scope.
 
 See [Milestone 2 behavior, demo scenarios, AWS setup and limitations](docs/milestone-2.md).
 
@@ -41,6 +44,7 @@ cd QuadraCodeLinc
 python3 -m venv backend/.venv
 backend/.venv/bin/python -m pip install -r backend/requirements-dev.txt
 npm --prefix voice-gateway ci
+npm --prefix frontend ci
 ```
 
 ## Local configuration
