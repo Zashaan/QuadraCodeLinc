@@ -1,0 +1,15 @@
+[
+  {
+    "member_id": "DEMO001",
+    "name": "Demo Member",
+    "plan_id": "DEMO_DENTAL_PPO",
+    "currency": "USD",
+    "annual_maximum": 2000,
+    "annual_maximum_used": 1200,
+    "annual_maximum_remaining": 800,
+    "deductible_total": 50,
+    "deductible_used": 50,
+    "deductible_remaining": 0,
+    "fsa_balance": 350
+  }
+]
