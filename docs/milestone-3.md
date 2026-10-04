@@ -44,7 +44,7 @@ NOVA_VOICE_ID=matthew
 
 Use `RAG_PROVIDER=bedrock` and the existing `BEDROCK_KNOWLEDGE_BASE_ID` once discovered.
 For the uploaded documents without metadata sidecars, set
-`RAG_DOCUMENT_MANIFEST_S3_URI=s3://rag-bucket123b/rag/metadata/documents.json`.
+`RAG_DOCUMENT_MANIFEST_S3_URI=s3://abe-rag-517355425116-us-east-1/rag/metadata/documents.json`.
 The adapter matches each retrieved S3 source against this manifest, includes plan titles
 and ID in the query, prefers plan-specific evidence, accepts verified global material,
 and drops conflicting or unknown sources. Structured rules remain the source of math.
@@ -66,10 +66,24 @@ The `codelinc` profile in `us-east-1` can read all seven supplied tables:
 $1,500 maximum / $700 used / $800 remaining, its structured plan, providers and 3 claims.
 These are synthetic HarborCare records, not actual Lincoln production members.
 
-The S3 bucket contains the 12 source PDFs and its document manifest. The Bedrock API
-returned **no Knowledge Bases in this region/account**, so no KB ID or ingestion job
-could be verified. No KB was created. Supply the existing KB's region/account or create
-and ingest one separately with approved infrastructure settings before enabling retrieval.
+The original discovery found no Knowledge Base. The subsequent integration bugfix verified
+existing managed KB `3IVSARFSID`, data source `O0U58ETG6C`, in `us-east-1`, with documents in
+`s3://abe-rag-517355425116-us-east-1/rag/`. A completed ingestion exists and live retrieval
+returns HC-PLUS evidence from `benefits_plus.pdf`. No infrastructure or ingestion was changed.
+
+Configure `RAG_PROVIDER=bedrock`, `BEDROCK_KNOWLEDGE_BASE_ID=3IVSARFSID`, and the current
+manifest URI above, then restart the backend. `scripts/run-backend.sh` loads the repository
+root `.env` before importing application settings. Startup logs identify the provider, region,
+and KB ID; query diagnostics include counts/source filenames/error classes, never question
+text, member data, full excerpts or credentials.
+
+The adapter supports both vector and managed Retrieve requests. Only AWS's explicit
+managed-configuration incompatibility triggers one retry with `managedSearchConfiguration`;
+that mode is cached for later requests. Auth/timeouts/other errors remain safe failures.
+It accepts equivalent S3 `documentId` and HTTPS S3 locations while retaining exact bucket/key
+validation against the manifest. Conflicting provenance and cross-plan evidence are rejected.
+The plan's summary title and ID guide retrieval without requiring metadata sidecars. Structured
+DynamoDB rules and the existing Python calculator remain authoritative for calculations.
 
 The AWS provider records contain no provider fee quotes, allowed amounts, distances or
 appointment dates, and their network labels do not identify participation in a specific
@@ -127,7 +141,7 @@ Use one short call to the existing number, +1 228-220-8820:
 2. Interrupt a second response in the same call. The conversation should continue.
 3. After the answer, ask “What plan am I on?” and give “demo double zero one” if needed.
    Expect HC-PLUS and the stored $800 if asking the remaining balance.
-4. Ask a plan question after another interruption. If RAG remains disabled, Abe should
-   explain that the plan-document detail cannot currently be verified.
+4. Ask a plan question after another interruption. Abe should retrieve HC-PLUS evidence and answer the question; only an actual retrieval
+   failure should produce an unable-to-verify response.
 
 Human acceptance is pending. No automated outbound call is made by these scripts.

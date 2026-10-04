@@ -94,7 +94,7 @@ def test_bedrock_sdk_filter_contract_and_wrong_plan_defense() -> None:
     metadata["page"] = 3.0  # Test fixture explicitly supplies a genuine page.
     expected = {
         "knowledgeBaseId": "DEMO123456",
-        "retrievalQuery": {"text": "crowns"},
+        "retrievalQuery": {"text": "DEMO_DENTAL_PPO: crowns"},
         "retrievalConfiguration": {
             "vectorSearchConfiguration": {
                 "numberOfResults": 4,
