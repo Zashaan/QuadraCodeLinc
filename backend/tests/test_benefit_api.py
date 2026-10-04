@@ -303,7 +303,9 @@ def test_provider_outage_and_unknown_rules_are_controlled() -> None:
             raise RuntimeError("private provider failure")
 
     class EmptyPlans(LocalPlanRulesRepository):
-        def get_plan(self, plan_id: str, employer_id: str, plan_year: int) -> PlanRules | None:
+        def get_plan(
+            self, plan_id: str, employer_id: str | None, plan_year: int | None
+        ) -> PlanRules | None:
             return None
 
     with TestClient(create_app(Settings(TOKEN), providers=BrokenProviders())) as client:

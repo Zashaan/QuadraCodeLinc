@@ -9,6 +9,8 @@ import {
   type BackendSession,
 } from "../src/backend.js";
 import { VoiceCall } from "../src/call.js";
+import { EventQueue } from "../src/nova/queue.js";
+import { StreamingNovaSession } from "../src/nova/session.js";
 import type { NovaCallbacks, NovaFactory } from "../src/nova/types.js";
 import { twilioAdapter } from "../src/telephony.js";
 
@@ -331,4 +333,104 @@ test("failed transcript writes mark the call partial without interrupting it", a
   await state.call.close();
   assert.deepEqual(partial, [true]);
   assert.equal(state.deleted, 1);
+});
+
+test("real adapter bridge survives two shared-completion interruptions and a normal third turn", async () => {
+  const socket = new Socket();
+  const output = new EventQueue();
+  const inputEvents: Record<string, unknown>[] = [];
+  const lifecycle: string[] = [];
+  let deleted = 0;
+  let destroyed = 0;
+  let inputWork: Promise<void> | undefined;
+  const call = new VoiceCall({
+    socket: socket as unknown as WebSocket,
+    telephony: twilioAdapter,
+    accountSid,
+    log: (event) => lifecycle.push(event),
+    backend: {
+      createSession: async () => session,
+      invokeTool: async () => ({ status: "success" }),
+      deleteSession: async () => {
+        deleted++;
+      },
+    },
+    novaFactory: {
+      create(callbacks) {
+        return new StreamingNovaSession("matthew", callbacks, {
+          async open(input, signal) {
+            signal.addEventListener("abort", () => output.end(true), {
+              once: true,
+            });
+            inputWork = (async () => {
+              for await (const bytes of input) {
+                const event = JSON.parse(
+                  Buffer.from(bytes).toString("utf8"),
+                ).event;
+                inputEvents.push(event);
+                if (event.sessionEnd) output.end();
+              }
+            })();
+            return output;
+          },
+          destroy() {
+            destroyed++;
+          },
+        });
+      },
+    },
+  });
+  socket.message(start);
+  await setImmediate();
+  for (let turn = 0; turn < 4; turn++) {
+    const contentId = `response-${turn}`;
+    const completionId = "same-nova-completion";
+    output.push({
+      contentStart: {
+        type: "AUDIO",
+        role: "ASSISTANT",
+        contentId,
+        completionId,
+      },
+    });
+    output.push({
+      audioOutput: { contentId, completionId, content: "AAAAAA==" },
+    });
+    output.push({
+      contentEnd: {
+        contentId,
+        completionId,
+        stopReason: turn < 2 ? "INTERRUPTED" : "END_TURN",
+      },
+    });
+    if (turn < 2)
+      output.push({
+        audioOutput: { contentId, completionId, content: "AQAAAA==" },
+      });
+    await setImmediate();
+    socket.message(media);
+    await setImmediate();
+    assert.equal(socket.readyState, WebSocket.OPEN);
+    assert.equal(destroyed, 0);
+    assert.equal(deleted, 0);
+  }
+  assert.deepEqual(
+    socket.sent.map((value) => JSON.parse(value).event),
+    ["media", "clear", "media", "clear", "media", "media"],
+  );
+  assert.equal(inputEvents.filter((event) => event.audioInput).length, 4);
+  assert.equal(
+    inputEvents.some((event) => event.sessionEnd || event.promptEnd),
+    false,
+  );
+  for (const event of [
+    "barge_in_playback_cleared",
+    "barge_in_input_continued",
+    "barge_in_response_resumed",
+  ])
+    assert.equal(lifecycle.filter((entry) => entry === event).length, 2);
+  await call.close();
+  await inputWork;
+  assert.equal(destroyed, 1);
+  assert.equal(deleted, 1);
 });

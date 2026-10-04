@@ -124,6 +124,16 @@ function toolEvents(
   output.push({ contentEnd: { contentId: block, stopReason: "TOOL_USE" } });
 }
 
+function audioStart(
+  output: EventQueue,
+  contentId: string,
+  completionId: string,
+) {
+  output.push({
+    contentStart: { type: "AUDIO", role: "ASSISTANT", contentId, completionId },
+  });
+}
+
 test("starts a real protocol session with 8 kHz PCM, tools, and a separate speak-first turn", async () => {
   const h = harness();
   await h.session.start("You are an AI assistant.", tools);
@@ -228,8 +238,13 @@ test("waits for complete tool blocks, correlates results, and leaves audio strea
   h.outgoing.push({
     contentEnd: { contentId: "block-a", stopReason: "TOOL_USE" },
   });
+  audioStart(h.outgoing, "audio-a", "response-a");
   h.outgoing.push({
-    audioOutput: { completionId: "response-a", content: "AAABAA==" },
+    audioOutput: {
+      contentId: "audio-a",
+      completionId: "response-a",
+      content: "AAABAA==",
+    },
   });
   await h.settle();
   assert.deepEqual(h.invocations, [
@@ -305,18 +320,28 @@ test("rejects unknown tools and malformed JSON without dispatching; sanitizes ba
 test("interruptions notify playback and discard late audio from the interrupted completion", async () => {
   const h = harness();
   await h.session.start("AI assistant", tools);
+  audioStart(h.outgoing, "old-audio", "old");
   h.outgoing.push({
     contentEnd: {
-      contentId: "old-text",
+      contentId: "old-audio",
       completionId: "old",
       stopReason: "INTERRUPTED",
     },
   });
   h.outgoing.push({
-    audioOutput: { completionId: "old", content: "AAAAAA==" },
+    audioOutput: {
+      contentId: "old-audio",
+      completionId: "old",
+      content: "AAAAAA==",
+    },
   });
+  audioStart(h.outgoing, "new-audio", "new");
   h.outgoing.push({
-    audioOutput: { completionId: "new", content: "AQABAA==" },
+    audioOutput: {
+      contentId: "new-audio",
+      completionId: "new",
+      content: "AQABAA==",
+    },
   });
   await h.settle();
   assert.equal(h.interrupted, 1);
@@ -417,6 +442,7 @@ test("transport startup errors destroy resources without revealing service error
 test("assistant text interruption marker clears once, discards stale audio, and permits follow-up tools", async () => {
   const h = harness();
   await h.session.start("AI assistant", tools);
+  audioStart(h.outgoing, "old-audio", "old");
   h.outgoing.push({
     contentStart: { type: "TEXT", role: "ASSISTANT", contentId: "notice" },
   });
@@ -435,7 +461,11 @@ test("assistant text interruption marker clears once, discards stale audio, and 
     },
   });
   h.outgoing.push({
-    audioOutput: { completionId: "old", content: "AAAAAA==" },
+    audioOutput: {
+      contentId: "old-audio",
+      completionId: "old",
+      content: "AAAAAA==",
+    },
   });
   h.outgoing.push({
     completionEnd: { completionId: "old", stopReason: "END_TURN" },
@@ -447,8 +477,13 @@ test("assistant text interruption marker clears once, discards stale audio, and 
     "followup",
     "followup-block",
   );
+  audioStart(h.outgoing, "new-audio", "new");
   h.outgoing.push({
-    audioOutput: { completionId: "new", content: "AQABAA==" },
+    audioOutput: {
+      contentId: "new-audio",
+      completionId: "new",
+      content: "AQABAA==",
+    },
   });
   h.session.sendAudio(Buffer.alloc(4));
   await h.settle();
@@ -558,5 +593,232 @@ test("persists final speaker text once and ignores speculative text and interrup
       text: "You have $800 remaining.",
     },
   ]);
+  assert.equal(h.closed, 0);
+  assert.equal(h.errors.length, 0);
+  await h.close();
+});
+
+// Nova's interactive completion ID can remain the same across A, B and C.
+// Every audio block still has its own content ID. The old completion blacklist
+// silently dropped B/C while leaving the microphone and socket open.
+for (const scenario of [
+  { name: "A → interrupt → B", turns: 2, interruptB: false },
+  { name: "A → interrupt → B → normal turn → C", turns: 3, interruptB: false },
+  { name: "A → interrupt → B → interrupt → C", turns: 3, interruptB: true },
+]) {
+  test(`shared-completion regression: ${scenario.name}`, async () => {
+    const h = harness();
+    await h.session.start("AI assistant", tools);
+    const completionId = "interactive-session-completion";
+    const expected: Buffer[] = [];
+    for (let turn = 0; turn < scenario.turns; turn++) {
+      const id = `audio-${turn}`;
+      if (turn) {
+        h.outgoing.push({
+          contentStart: {
+            type: "TEXT",
+            role: "USER",
+            contentId: `caller-${turn}`,
+            completionId,
+            additionalModelFields: '{"generationStage":"FINAL"}',
+          },
+        });
+        h.outgoing.push({
+          textOutput: {
+            contentId: `caller-${turn}`,
+            completionId,
+            content: "Follow-up question",
+          },
+        });
+        h.outgoing.push({
+          contentEnd: {
+            contentId: `caller-${turn}`,
+            completionId,
+            stopReason: "END_TURN",
+          },
+        });
+      }
+      audioStart(h.outgoing, id, completionId);
+      const pcm = Buffer.from([turn + 1, 0]);
+      expected.push(pcm);
+      h.outgoing.push({
+        audioOutput: {
+          contentId: id,
+          completionId,
+          content: pcm.toString("base64"),
+        },
+      });
+      const interrupted = turn === 0 || (turn === 1 && scenario.interruptB);
+      h.outgoing.push({
+        contentEnd: {
+          contentId: id,
+          completionId,
+          stopReason: interrupted ? "INTERRUPTED" : "END_TURN",
+        },
+      });
+      if (interrupted)
+        h.outgoing.push({
+          audioOutput: { contentId: id, completionId, content: "AAAAAA==" },
+        });
+      h.session.sendAudio(Buffer.alloc(320));
+      await h.settle();
+      assert.equal(h.closed, 0);
+      assert.equal(h.destroyed, 0);
+      assert.equal(h.errors.length, 0);
+    }
+    assert.deepEqual(h.audio, expected);
+    assert.equal(h.interrupted, scenario.interruptB ? 2 : 1);
+    assert.equal(
+      h.incoming.filter((event) => event.audioInput).length,
+      scenario.turns,
+    );
+    assert.equal(h.transcripts.length, scenario.turns - 1);
+    assert.equal(
+      h.incoming.some((event) => event.promptEnd || event.sessionEnd),
+      false,
+    );
+    await h.close();
+  });
+}
+
+for (const position of [
+  "before first audio",
+  "first frame",
+  "after final frame",
+] as const) {
+  test(`rapid interruption ${position} does not suppress a new response`, async () => {
+    const h = harness();
+    await h.session.start("AI assistant", tools);
+    const completionId = "shared";
+    h.outgoing.push({
+      contentStart: {
+        type: "TEXT",
+        role: "ASSISTANT",
+        contentId: "text-a",
+        completionId,
+        additionalModelFields: '{"generationStage":"SPECULATIVE"}',
+      },
+    });
+    h.outgoing.push({
+      textOutput: { contentId: "text-a", completionId, content: "Response A" },
+    });
+    if (position !== "before first audio") {
+      audioStart(h.outgoing, "audio-a", completionId);
+      h.outgoing.push({
+        audioOutput: {
+          contentId: "audio-a",
+          completionId,
+          content: "AQAAAA==",
+        },
+      });
+    }
+    if (position === "after final frame")
+      h.outgoing.push({
+        contentEnd: {
+          contentId: "audio-a",
+          completionId,
+          stopReason: "END_TURN",
+        },
+      });
+    h.outgoing.push({
+      textOutput: {
+        contentId: "text-a",
+        completionId,
+        content: '{"interrupted":true}',
+      },
+    });
+    if (position === "before first audio")
+      audioStart(h.outgoing, "audio-a", completionId);
+    h.outgoing.push({
+      audioOutput: { contentId: "audio-a", completionId, content: "AAAAAA==" },
+    });
+    h.session.sendAudio(Buffer.alloc(320));
+    h.outgoing.push({
+      contentStart: {
+        type: "TEXT",
+        role: "ASSISTANT",
+        contentId: "text-b",
+        completionId,
+        additionalModelFields: '{"generationStage":"SPECULATIVE"}',
+      },
+    });
+    h.outgoing.push({
+      textOutput: { contentId: "text-b", completionId, content: "Response B" },
+    });
+    audioStart(h.outgoing, "audio-b", completionId);
+    h.outgoing.push({
+      audioOutput: { contentId: "audio-b", completionId, content: "AgAAAA==" },
+    });
+    await h.settle();
+    assert.equal(h.interrupted, 1);
+    assert.deepEqual(
+      h.audio,
+      position === "before first audio"
+        ? [Buffer.from([2, 0, 0, 0])]
+        : [Buffer.from([1, 0, 0, 0]), Buffer.from([2, 0, 0, 0])],
+    );
+    assert.equal(h.closed, 0);
+    assert.equal(h.errors.length, 0);
+    await h.close();
+  });
+}
+
+test("late A interruption and audio cannot clear or contaminate active B", async () => {
+  const h = harness();
+  await h.session.start("AI assistant", tools);
+  audioStart(h.outgoing, "audio-a", "shared");
+  h.outgoing.push({
+    audioOutput: {
+      contentId: "audio-a",
+      completionId: "shared",
+      content: "AQAAAA==",
+    },
+  });
+  h.outgoing.push({
+    contentEnd: {
+      contentId: "audio-a",
+      completionId: "shared",
+      stopReason: "END_TURN",
+    },
+  });
+  audioStart(h.outgoing, "audio-b", "shared");
+  h.outgoing.push({
+    audioOutput: {
+      contentId: "audio-b",
+      completionId: "shared",
+      content: "AgAAAA==",
+    },
+  });
+  h.outgoing.push({
+    contentEnd: {
+      contentId: "audio-a",
+      completionId: "shared",
+      stopReason: "INTERRUPTED",
+    },
+  });
+  audioStart(h.outgoing, "audio-a", "shared");
+  h.outgoing.push({
+    audioOutput: {
+      contentId: "audio-a",
+      completionId: "shared",
+      content: "AAAAAA==",
+    },
+  });
+  h.outgoing.push({
+    audioOutput: {
+      contentId: "audio-b",
+      completionId: "shared",
+      content: "AwAAAA==",
+    },
+  });
+  await h.settle();
+  assert.equal(h.interrupted, 0);
+  assert.deepEqual(h.audio, [
+    Buffer.from([1, 0, 0, 0]),
+    Buffer.from([2, 0, 0, 0]),
+    Buffer.from([3, 0, 0, 0]),
+  ]);
+  assert.equal(h.closed, 0);
+  assert.equal(h.errors.length, 0);
   await h.close();
 });

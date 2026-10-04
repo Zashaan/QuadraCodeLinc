@@ -16,6 +16,7 @@
     "state": "NC",
     "zip_code": "27401",
     "balances_as_of": "2026-10-04",
-    "synthetic": true
+    "synthetic": true,
+    "member_status": "active"
   }
 ]

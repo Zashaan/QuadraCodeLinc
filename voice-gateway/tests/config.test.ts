@@ -18,7 +18,7 @@ test("configuration normalizes origins and supplies local-development defaults",
   assert.equal(config.port, 3000);
   assert.equal(config.region, "us-east-1");
   assert.equal(config.modelId, "amazon.nova-2-sonic-v1:0");
-  assert.equal(config.voiceId, "tiffany");
+  assert.equal(config.voiceId, "matthew");
 });
 
 test("remote HTTP is rejected while HTTPS and exact loopback HTTP are accepted", () => {

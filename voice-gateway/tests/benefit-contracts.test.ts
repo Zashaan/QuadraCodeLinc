@@ -21,7 +21,7 @@ test("all advertised backend tools and real benefit results cross the gateway bo
   const signal = new AbortController().signal;
   assert.equal(
     (await backend.createSession(`CA${"a".repeat(32)}`, signal)).tools.length,
-    6,
+    7,
   );
   for (const result of contracts.results) {
     response = result;
