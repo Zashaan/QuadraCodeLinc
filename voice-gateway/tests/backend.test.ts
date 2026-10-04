@@ -244,3 +244,65 @@ test("session deletion authenticates and accepts an empty 204 response", async (
   );
   await client().deleteSession(sessionId);
 });
+
+test("spoken-ID resolution is advertised and its results stay separate from member facts", async (t) => {
+  const resolver = {
+    toolName: "resolve_member_id",
+    toolUseId: "resolve-1",
+    input: { spoken_id: "demo double zero one" },
+  };
+  let payload: unknown = { status: "resolved", member_id: "DEMO001" };
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      tool_name: resolver.toolName,
+      tool_call_id: resolver.toolUseId,
+      result: payload,
+    }),
+  );
+  assert.deepEqual(
+    await client().invokeTool(sessionId, resolver, signal()),
+    payload,
+  );
+  payload = { status: "repeat" };
+  assert.deepEqual(
+    await client().invokeTool(sessionId, resolver, signal()),
+    payload,
+  );
+  payload = { status: "confirm", candidates: ["DEMO001", "DEM0001"] };
+  assert.deepEqual(
+    await client().invokeTool(sessionId, resolver, signal()),
+    payload,
+  );
+  for (const invalid of [
+    { status: "resolved", member_id: "demo zero zero one" },
+    { status: "confirm", candidates: ["DEMO001"] },
+    { status: "confirm", candidates: ["DEMO001", "DEMO001"] },
+    { status: "repeat", member_id: "DEMO001" },
+    { status: "success", member },
+  ]) {
+    payload = invalid;
+    await assert.rejects(
+      client().invokeTool(sessionId, resolver, signal()),
+      backendError("invalid_response"),
+    );
+  }
+});
+
+test("session can advertise the backend ID resolver", async (t) => {
+  const advertised = {
+    ...session,
+    tools: [
+      ...session.tools,
+      {
+        name: "resolve_member_id",
+        description: "Resolve spoken ID",
+        input_schema: { type: "object" },
+      },
+    ],
+  };
+  t.mock.method(globalThis, "fetch", async () => Response.json(advertised));
+  assert.deepEqual(
+    await client().createSession(`CA${"1".repeat(32)}`, signal()),
+    advertised,
+  );
+});

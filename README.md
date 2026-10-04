@@ -119,6 +119,8 @@ Save the number configuration. The webhook returns `<Connect><Stream>` pointing 
 
 Call the number and ask “How much dental benefit do I have left?” Then give demo member ID `DEMO001`. Abe should use `get_member` and explain the stored $800 remaining amount. Also try an unknown ID, interrupt a spoken reply, and hang up to verify cleanup. Calls are limited to **seven minutes**, with **four concurrent calls** per gateway process.
 
+Spoken IDs first go to the backend `resolve_member_id` tool. Say “demo zero zero one,” “D E M O zero zero one,” or “demo double zero one.” Deterministic parsing checks candidates against the member repository before returning `DEMO001` to `get_member`. Unrecognized wording requests repetition; multiple valid interpretations require confirmation. No fuzzy correction or arbitrary filler-word removal is performed. Restart both services after updating this tool contract.
+
 This is a **synthetic-data demo without caller identity verification**. Do not connect it to real member records. Backend sessions are process-local, capped at 100, expire after 15 minutes idle or one hour total, and disappear on restart. Run one backend worker.
 
 ## Checks
