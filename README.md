@@ -9,6 +9,39 @@ Milestone 2 includes automated protocol, API, repository, calculator and cross-l
 
 The new [companion app](docs/companion-app.md) adds a responsive conversation inbox, persistent call transcripts, verified recap cards, and text chat using the same Abe tools.
 
+## One-command judging demo (no credentials)
+
+On **macOS or Linux**, install **Node.js 22+ with npm** and **Python 3.12+ with venv**.
+From the repository root, paste this into the judging form's **Build and start command**:
+
+```bash
+bash scripts/run-demo.sh
+```
+
+The command installs dependencies, builds both JavaScript components, starts all
+three services, and checks each service before printing **ABE DEMO READY**.
+Internet access is needed for dependency installation. Open **http://127.0.0.1:3000**
+for the guided demo and **http://127.0.0.1:5173** for the React companion.
+Press **Ctrl+C** to stop all three. Ports 8000, 3000 and 5173 must be available.
+On Windows, use WSL with these prerequisites installed inside WSL. For an existing
+live setup, choose unused ports without stopping it:
+
+```bash
+ABE_DEMO_BACKEND_PORT=18000 ABE_DEMO_PORT=13000 ABE_DEMO_FRONTEND_PORT=15173 bash scripts/run-demo.sh
+```
+
+No `.env`, AWS account, Twilio account, tunnel, API key or paid service is needed.
+The launcher ignores local `.env` and inherited service configuration, generates
+an ephemeral internal authentication token, and uses synthetic repositories.
+The guided scenario runs real normalization, member lookup, local plan retrieval,
+provider search, deterministic calculation and optimization through the gateway's
+existing backend client. It uses a fixed synthetic treatment date, November 1, 2026.
+The companion provides its existing sample conversations, transcripts and summaries.
+**Free-form Nova chat and real telephone/audio calls are not simulated:** they
+require the live setup below. The demo gateway uses a separate loopback-only entry
+point; production webhook authentication and audio handling are unchanged.
+Do not expose the offline demo through a public tunnel.
+
 ## Architecture
 
 ```text
