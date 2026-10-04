@@ -20,9 +20,12 @@ export const sourceSchema = z
     section: text.optional(),
     page: z.number().int().positive().optional(),
     plan_id: text,
-    employer: text,
-    plan_year: z.number().int().min(2000).max(2100),
-    state: z.string().regex(/^[A-Z]{2}$/),
+    employer: text.optional(),
+    plan_year: z.number().int().min(2000).max(2100).optional(),
+    state: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .optional(),
     doc_type: text,
     synthetic: z.boolean(),
     uri: z.string().min(1).max(1024).optional(),
@@ -95,7 +98,15 @@ export const providerSchema = z
     ),
     source: text,
     verification_status: z.literal("synthetic"),
-    verified_on: text,
+    verified_on: text.optional(),
+    accepting_new_patients: z.boolean().optional(),
+    available_dates: z.array(date).max(100).optional(),
+    network_scope: z.enum(["plan", "dataset_global"]).optional(),
+    city: text.optional(),
+    state: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .optional(),
     synthetic: z.literal(true),
   })
   .strict();
@@ -116,7 +127,7 @@ export const estimateSchema = z
     member_id: text,
     plan_id: text,
     treatment_date: date,
-    balances_as_of: date,
+    balances_as_of: date.optional(),
     procedure: text,
     network_status: network,
     provider_charge: money,
@@ -129,6 +140,8 @@ export const estimateSchema = z
     contractual_write_off: money,
     annual_maximum_consumed: money,
     annual_maximum_remaining_afterward: money,
+    deductible_remaining_afterward: money,
+    orthodontic_lifetime_remaining_afterward: money.optional(),
     steps: z.array(z.string()).max(20),
     assumptions: z.array(z.string()).max(20),
     warnings: z.array(z.string()).max(20),
@@ -141,4 +154,58 @@ export const estimateSchema = z
 export const calculationResultSchema = z.union([
   unavailableSchema,
   estimateSchema,
+]);
+
+const scenarioSchema = z
+  .object({
+    scenario_id: text,
+    provider_id: text,
+    provider_name: text,
+    treatment_date: date,
+    benefit_year: z.number().int(),
+    timing: z.enum(["current_benefit_year", "after_benefit_reset"]),
+    network_status: network,
+    distance_miles: z.number().int().nonnegative().optional(),
+    availability_confirmed: z.boolean(),
+    estimate: estimateSchema,
+    fsa_applied: money,
+    estimated_cash_payment: money,
+    constraint_status: z.literal("passed"),
+    assumptions: z.array(z.string()).max(30),
+    reasons: z.array(z.string()).max(30),
+    tradeoffs: z.array(z.string()).max(30),
+  })
+  .strict();
+export const optimizationResultSchema = z.union([
+  unavailableSchema,
+  z
+    .object({
+      status: z.enum([
+        "optimized",
+        "missing_information",
+        "no_feasible_scenarios",
+      ]),
+      best_overall: scenarioSchema.optional(),
+      cheapest_alternative: scenarioSchema.optional(),
+      fastest_alternative: scenarioSchema.optional(),
+      closest_alternative: scenarioSchema.optional(),
+      scenarios_evaluated: z.number().int().min(0).max(50),
+      feasible_scenarios: z.number().int().min(0).max(50),
+      excluded: z
+        .array(
+          z
+            .object({
+              provider_id: z.string(),
+              treatment_date: date,
+              reason: z.string(),
+              missing_fields: z.array(z.string()).max(30),
+            })
+            .strict(),
+        )
+        .max(50),
+      missing_fields: z.array(z.string()).max(30),
+      assumptions: z.array(z.string()).max(30),
+      follow_up: z.string().optional(),
+    })
+    .strict(),
 ]);

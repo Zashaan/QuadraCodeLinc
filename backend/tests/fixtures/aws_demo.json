@@ -1,0 +1,322 @@
+{
+  "abe-members": [
+    {
+      "plan_id": "HC-PLUS",
+      "orthodontic_lifetime_maximum": "1500",
+      "is_synthetic": true,
+      "member_status": "active",
+      "annual_maximum": "1500",
+      "annual_maximum_used": "700",
+      "deductible_remaining": "0",
+      "deductible": "50",
+      "annual_maximum_remaining": "800",
+      "orthodontic_lifetime_used": "0",
+      "coverage_tier": "individual",
+      "last_name": "Lee",
+      "member_id": "DEMO001",
+      "first_name": "Jordan",
+      "deductible_met": "50",
+      "coverage_start_date": "2026-01-01"
+    }
+  ],
+  "abe-plans": [
+    {
+      "plan_id": "HC-PLUS",
+      "waiting_period_months": {
+        "orthodontic": "12",
+        "basic": "0",
+        "major": "6",
+        "preventive": "0"
+      },
+      "monthly_premium": "32",
+      "orthodontic_lifetime_maximum": "1500",
+      "coverage": {
+        "orthodontic": "50",
+        "basic": "80",
+        "major": "50",
+        "preventive": "100"
+      },
+      "annual_maximum": "1500",
+      "annual_deductible_individual": "50",
+      "preauthorization": {
+        "major_service_threshold": "1200",
+        "orthodontics_required": true,
+        "required_categories": [
+          "implant",
+          "orthodontic"
+        ]
+      },
+      "network_rules": {
+        "in_network": "Negotiated allowed amount; no balance billing above the allowed amount.",
+        "out_of_network": "Plan pays the applicable percentage of the lower HarborCare out-of-network allowed amount. Balance billing may apply."
+      },
+      "plan_type": "PPO",
+      "frequency_limits": {
+        "exam": "2 per benefit year",
+        "cleaning": "2 per benefit year",
+        "bitewing_xray": "1 per benefit year",
+        "full_mouth_xray": "1 every 60 months",
+        "crown": "1 per tooth every 60 months"
+      },
+      "notes": [
+        "Preventive services do not require the deductible.",
+        "Orthodontia is covered at 50% after the orthodontic waiting period, up to the lifetime maximum.",
+        "Annual maximum does not include orthodontic payments."
+      ],
+      "annual_deductible_family": "150",
+      "plan_name": "HarborCare Plus"
+    }
+  ],
+  "abe-coverage-rules": [
+    {
+      "plan_id": "HC-PLUS",
+      "waiting_period_months": "0",
+      "is_synthetic": true,
+      "annual_maximum_applies": true,
+      "orthodontic_lifetime_maximum_applies": false,
+      "coverage_percent": "80",
+      "deductible_applies": true,
+      "category": "basic"
+    },
+    {
+      "plan_id": "HC-PLUS",
+      "waiting_period_months": "6",
+      "is_synthetic": true,
+      "annual_maximum_applies": true,
+      "orthodontic_lifetime_maximum_applies": false,
+      "coverage_percent": "50",
+      "deductible_applies": true,
+      "category": "major"
+    },
+    {
+      "plan_id": "HC-PLUS",
+      "waiting_period_months": "12",
+      "is_synthetic": true,
+      "annual_maximum_applies": false,
+      "orthodontic_lifetime_maximum_applies": true,
+      "coverage_percent": "50",
+      "deductible_applies": false,
+      "category": "orthodontic"
+    },
+    {
+      "plan_id": "HC-PLUS",
+      "waiting_period_months": "0",
+      "is_synthetic": true,
+      "annual_maximum_applies": true,
+      "orthodontic_lifetime_maximum_applies": false,
+      "coverage_percent": "100",
+      "deductible_applies": false,
+      "category": "preventive"
+    }
+  ],
+  "abe-procedures": [
+    {
+      "procedure_name": "Periodontal scaling and root planing - four or more teeth per quadrant",
+      "specialty": "Periodontist",
+      "category": "basic",
+      "procedure_code": "D4341",
+      "typical_price": "310"
+    },
+    {
+      "procedure_name": "Simple extraction",
+      "specialty": "General Dentist",
+      "category": "basic",
+      "procedure_code": "D7140",
+      "typical_price": "240"
+    },
+    {
+      "procedure_name": "Complete series of intraoral X-rays",
+      "specialty": "General Dentist",
+      "category": "preventive",
+      "procedure_code": "D0210",
+      "typical_price": "165"
+    },
+    {
+      "procedure_name": "Resin filling - one surface, posterior",
+      "specialty": "General Dentist",
+      "category": "basic",
+      "procedure_code": "D2391",
+      "typical_price": "210"
+    },
+    {
+      "procedure_name": "Resin filling - two surfaces, posterior",
+      "specialty": "General Dentist",
+      "category": "basic",
+      "procedure_code": "D2392",
+      "typical_price": "275"
+    },
+    {
+      "procedure_name": "Bitewing X-rays - four images",
+      "specialty": "General Dentist",
+      "category": "preventive",
+      "procedure_code": "D0274",
+      "typical_price": "85"
+    },
+    {
+      "procedure_name": "Complete denture - maxillary",
+      "specialty": "Prosthodontist",
+      "category": "major",
+      "procedure_code": "D5110",
+      "typical_price": "1750"
+    },
+    {
+      "procedure_name": "Comprehensive oral evaluation",
+      "specialty": "General Dentist",
+      "category": "preventive",
+      "procedure_code": "D0150",
+      "typical_price": "95"
+    },
+    {
+      "procedure_name": "Surgical extraction",
+      "specialty": "Oral Surgeon",
+      "category": "major",
+      "procedure_code": "D7210",
+      "typical_price": "550"
+    },
+    {
+      "procedure_name": "Topical fluoride varnish",
+      "specialty": "General Dentist",
+      "category": "preventive",
+      "procedure_code": "D1206",
+      "typical_price": "55"
+    },
+    {
+      "procedure_name": "Child prophylaxis (cleaning)",
+      "specialty": "Pediatric Dentist",
+      "category": "preventive",
+      "procedure_code": "D1120",
+      "typical_price": "90"
+    },
+    {
+      "procedure_name": "Surgical placement of implant body",
+      "specialty": "Oral Surgeon",
+      "category": "major",
+      "procedure_code": "D6010",
+      "typical_price": "2100"
+    },
+    {
+      "procedure_name": "Comprehensive orthodontic treatment",
+      "specialty": "Orthodontist",
+      "category": "orthodontic",
+      "procedure_code": "D8080",
+      "typical_price": "5800"
+    },
+    {
+      "procedure_name": "Adult prophylaxis (cleaning)",
+      "specialty": "General Dentist",
+      "category": "preventive",
+      "procedure_code": "D1110",
+      "typical_price": "125"
+    },
+    {
+      "procedure_name": "Root canal therapy - molar",
+      "specialty": "Endodontist",
+      "category": "major",
+      "procedure_code": "D3330",
+      "typical_price": "1250"
+    },
+    {
+      "procedure_name": "Occlusal guard - hard appliance",
+      "specialty": "General Dentist",
+      "category": "noncovered",
+      "procedure_code": "D9944",
+      "typical_price": "500"
+    },
+    {
+      "procedure_name": "Crown - porcelain/ceramic",
+      "specialty": "General Dentist",
+      "category": "major",
+      "procedure_code": "D2740",
+      "typical_price": "1350"
+    },
+    {
+      "procedure_name": "Periodic oral evaluation",
+      "specialty": "General Dentist",
+      "category": "preventive",
+      "procedure_code": "D0120",
+      "typical_price": "65"
+    }
+  ],
+  "abe-providers": [
+    {
+      "city": "Princeton",
+      "network_status": "in_network",
+      "zip": "08540",
+      "is_synthetic": true,
+      "accepting_new_patients": true,
+      "specialty": "General Dentist",
+      "provider_id": "DEN1001",
+      "name": "Harbor Dental",
+      "state": "NJ"
+    }
+  ],
+  "abe-claims": [
+    {
+      "claim_status": "paid",
+      "patient_responsibility": "400",
+      "is_synthetic": true,
+      "claim_id": "CLM10003",
+      "procedure_code": "D2740",
+      "service_date": "2026-05-15",
+      "deductible_applied": "0",
+      "provider_id": "DEN1003",
+      "network_status": "in_network",
+      "submitted_amount": "1200",
+      "denial_reason": null,
+      "member_id": "DEMO001",
+      "notes": "HC-PLUS major service paid at 50% after deductible; annual maximum had sufficient remaining balance.",
+      "procedure_name": "Crown - porcelain/ceramic",
+      "allowed_amount": "800",
+      "insurance_paid": "400"
+    },
+    {
+      "claim_status": "paid",
+      "patient_responsibility": "0",
+      "is_synthetic": true,
+      "claim_id": "CLM10001",
+      "procedure_code": "D1110",
+      "service_date": "2026-02-12",
+      "deductible_applied": "0",
+      "provider_id": "DEN1001",
+      "network_status": "in_network",
+      "submitted_amount": "140",
+      "denial_reason": null,
+      "member_id": "DEMO001",
+      "notes": null,
+      "procedure_name": "Adult prophylaxis (cleaning)",
+      "allowed_amount": "140",
+      "insurance_paid": "140"
+    },
+    {
+      "claim_status": "paid",
+      "patient_responsibility": "90",
+      "is_synthetic": true,
+      "claim_id": "CLM10002",
+      "procedure_code": "D2391",
+      "service_date": "2026-03-19",
+      "deductible_applied": "50",
+      "provider_id": "DEN1002",
+      "network_status": "in_network",
+      "submitted_amount": "250",
+      "denial_reason": null,
+      "member_id": "DEMO001",
+      "notes": "HC-PLUS basic service: deductible satisfied on this claim, then 80% plan payment.",
+      "procedure_name": "Resin filling - one surface, posterior",
+      "allowed_amount": "250",
+      "insurance_paid": "160"
+    }
+  ],
+  "abe-authorizations": [
+    {
+      "requested_date": "2026-08-01",
+      "is_synthetic": true,
+      "member_id": "DEMO007",
+      "procedure_code": "D8080",
+      "status": "denied",
+      "provider_id": "DEN1008",
+      "decision_date": "2026-08-09",
+      "reason": "Required treatment plan documentation was not received.",
+      "authorization_id": "AUTH2001"
+    }
+  ]
+}

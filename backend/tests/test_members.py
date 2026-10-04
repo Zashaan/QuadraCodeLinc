@@ -31,6 +31,7 @@ def test_demo_member_has_exact_stored_balances() -> None:
         "zip_code": "27401",
         "balances_as_of": date(2026, 10, 4),
         "synthetic": True,
+        "member_status": "active",
     }
 
 

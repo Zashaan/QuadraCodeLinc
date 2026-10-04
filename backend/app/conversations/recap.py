@@ -67,7 +67,7 @@ def build_recap(
             if isinstance(estimate, BenefitEstimate)
             else None
         ),
-        fsa_balance=usd(member.fsa_balance) if member else None,
+        fsa_balance=usd(member.fsa_balance) if member and member.fsa_balance is not None else None,
         network_status=network_status or (estimate.network_status if estimate else None),
     )
 

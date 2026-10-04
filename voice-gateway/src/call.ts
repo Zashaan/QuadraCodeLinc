@@ -44,6 +44,8 @@ export class VoiceCall {
   private transcriptQueue: TranscriptEvent[] = [];
   private transcriptWork: Promise<void> | undefined;
   private transcriptIncomplete = false;
+  private interruptedPlayback = false;
+  private awaitingCallerAudio = false;
 
   constructor(private readonly options: CallOptions) {
     this.startupTimer = setTimeout(
@@ -109,8 +111,13 @@ export class VoiceCall {
       void this.close("caller_stopped");
     } else if (event.type === "audio") {
       const pcm = mulawToPcm16(event.audio);
-      if (this.ready) this.nova?.sendAudio(pcm);
-      else {
+      if (this.ready) {
+        this.nova?.sendAudio(pcm);
+        if (this.awaitingCallerAudio) {
+          this.awaitingCallerAudio = false;
+          this.event("barge_in_input_continued");
+        }
+      } else {
         this.pendingBytes += pcm.byteLength;
         if (this.pendingBytes > 80_000)
           throw new Error("Startup audio buffer full");
@@ -140,9 +147,13 @@ export class VoiceCall {
         },
         onAudio: (pcm) => this.sendAudio(pcm),
         onInterrupted: () => {
+          if (this.closed) return;
+          this.interruptedPlayback = true;
+          this.awaitingCallerAudio = true;
           this.pcmRemainder = Buffer.alloc(0);
           if (this.streamId)
             this.send(this.options.telephony.clear(this.streamId));
+          this.event("barge_in_playback_cleared");
         },
         onToolUse: (tool) => this.invokeTool(tool),
         onError: () => {
@@ -220,6 +231,10 @@ export class VoiceCall {
 
   private sendAudio(pcm: Buffer) {
     if (this.closed || !this.streamId) return;
+    if (this.interruptedPlayback && pcm.length) {
+      this.interruptedPlayback = false;
+      this.event("barge_in_response_resumed");
+    }
     const aligned = this.pcmRemainder.length
       ? Buffer.concat([this.pcmRemainder, pcm])
       : pcm;

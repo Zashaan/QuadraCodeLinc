@@ -39,3 +39,12 @@ Future text: React/Vite → FastAPI → Nova text model → the same Abe tools. 
 - Internal requests use `Authorization: Bearer <ABE_INTERNAL_TOKEN>`. Only the gateway is exposed through the tunnel.
 - Spoken IDs go verbatim to `resolve_member_id` before `get_member`. Python normalizes case, separators, digit words, and double/triple digits, then checks repository matches. Only one match resolves directly; none requests repetition, multiple require caller confirmation. Never strip arbitrary words or let Nova invent canonical IDs.
 - Nova adapter owns `src/nova/`; the gateway owns HTTP, telephony, audio codec and backend client. Do not mix benefit rules into the gateway.
+
+## Milestone 3 additions
+
+- Preserve the existing UI; M3 adds no UI work. AWS demo adapters remain read-only and synthetic-only.
+- The AWS fixture dynamically resolves DEMO001 to HC-PLUS (1500 maximum, 700 used, 800 remaining); local M1/M2 fixture balances remain separate. Never hardcode AWS facts in logic.
+- Missing fees, dates, distance, FSA, network participation or authorization remain unknown.
+- `optimize_benefits` reuses the calculator; enforce hard constraints before deterministic ranking. Delayed dates require dentist-approved timing, and future terms require an explicit assumption.
+- Barge-in suppression is scoped to response content; completion IDs can span turns. Do not close input/session on interruption.
+- Run the full check suite and the read-only AWS verification script. Human phone acceptance remains distinct from automated checks.

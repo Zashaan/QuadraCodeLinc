@@ -19,6 +19,16 @@ class Settings:
     conversation_repository: str = "synthetic"
     dynamodb_conversation_table: str = ""
     conversation_db_path: str = ".local/abe-conversations.sqlite3"
+    plan_rules_source: str = "local"
+    provider_repository: str = "synthetic"
+    history_repository: str = "synthetic"
+    dynamodb_plan_table: str = ""
+    dynamodb_coverage_rule_table: str = ""
+    dynamodb_procedure_table: str = ""
+    dynamodb_provider_table: str = ""
+    dynamodb_claim_table: str = ""
+    dynamodb_authorization_table: str = ""
+    rag_document_manifest_s3_uri: str = ""
     rag_provider: str = "local"
     bedrock_knowledge_base_id: str = ""
     aws_region: str = "us-east-1"
@@ -37,8 +47,29 @@ class Settings:
             raise ValueError("Invalid MEMBER_REPOSITORY")
         if self.conversation_repository not in {"synthetic", "sqlite", "dynamodb"}:
             raise ValueError("Invalid CONVERSATION_REPOSITORY")
-        if self.rag_provider not in {"local", "bedrock"}:
+        if self.rag_provider not in {"local", "bedrock", "disabled"}:
             raise ValueError("Invalid RAG_PROVIDER")
+        for mode, allowed, label in (
+            (self.plan_rules_source, {"local", "dynamodb"}, "PLAN_RULES_SOURCE"),
+            (self.provider_repository, {"synthetic", "dynamodb"}, "PROVIDER_REPOSITORY"),
+            (self.history_repository, {"synthetic", "dynamodb"}, "HISTORY_REPOSITORY"),
+        ):
+            if mode not in allowed:
+                raise ValueError(f"Invalid {label}")
+        for enabled, fields in (
+            (
+                self.plan_rules_source == "dynamodb",
+                ("dynamodb_plan_table", "dynamodb_coverage_rule_table", "dynamodb_procedure_table"),
+            ),
+            (self.provider_repository == "dynamodb", ("dynamodb_provider_table",)),
+            (
+                self.history_repository == "dynamodb",
+                ("dynamodb_claim_table", "dynamodb_authorization_table"),
+            ),
+        ):
+            for field_name in fields:
+                if enabled and not getattr(self, field_name):
+                    raise ValueError(f"{field_name.upper()} is required")
         if self.member_repository == "dynamodb" and not self.dynamodb_member_table:
             raise ValueError("DYNAMODB_MEMBER_TABLE is required")
         if self.conversation_repository == "dynamodb" and not self.dynamodb_conversation_table:
@@ -58,6 +89,16 @@ class Settings:
             conversation_db_path=os.environ.get(
                 "ABE_CONVERSATION_DB", ".local/abe-conversations.sqlite3"
             ),
+            plan_rules_source=os.environ.get("PLAN_RULES_SOURCE", "local"),
+            provider_repository=os.environ.get("PROVIDER_REPOSITORY", "synthetic"),
+            history_repository=os.environ.get("HISTORY_REPOSITORY", "synthetic"),
+            dynamodb_plan_table=os.environ.get("DYNAMODB_PLAN_TABLE", ""),
+            dynamodb_coverage_rule_table=os.environ.get("DYNAMODB_COVERAGE_RULE_TABLE", ""),
+            dynamodb_procedure_table=os.environ.get("DYNAMODB_PROCEDURE_TABLE", ""),
+            dynamodb_provider_table=os.environ.get("DYNAMODB_PROVIDER_TABLE", ""),
+            dynamodb_claim_table=os.environ.get("DYNAMODB_CLAIM_TABLE", ""),
+            dynamodb_authorization_table=os.environ.get("DYNAMODB_AUTHORIZATION_TABLE", ""),
+            rag_document_manifest_s3_uri=os.environ.get("RAG_DOCUMENT_MANIFEST_S3_URI", ""),
             rag_provider=os.environ.get("RAG_PROVIDER", "local"),
             bedrock_knowledge_base_id=os.environ.get("BEDROCK_KNOWLEDGE_BASE_ID", ""),
             aws_region=os.environ.get("AWS_REGION", "us-east-1"),

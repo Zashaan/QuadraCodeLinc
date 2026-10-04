@@ -17,6 +17,17 @@ interface ToolBlock {
   json: string;
 }
 
+interface ResponseState {
+  interrupted: boolean;
+  audioStarted: boolean;
+}
+
+interface OutputBlock {
+  type: unknown;
+  response: ResponseState | undefined;
+  startsResponse: boolean;
+}
+
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Invalid Nova event.");
@@ -73,7 +84,11 @@ export class StreamingNovaSession implements NovaSession {
   private readonly allowedTools = new Set<string>();
   private readonly toolBlocks = new Map<string, ToolBlock>();
   private readonly seenToolIds = new Set<string>();
-  private readonly interruptedCompletions = new Set<string>();
+  // A completion can span several conversational turns. Never blacklist its ID.
+  // Keep bounded block ownership so a late event from A cannot clear response B.
+  private readonly outputBlocks = new Map<string, OutputBlock>();
+  private response: ResponseState | undefined;
+  private nextResponse = true;
   private readonly assistantTextBlocks = new Set<string>();
   private readonly finalText = new Map<
     string,
@@ -268,6 +283,10 @@ export class StreamingNovaSession implements NovaSession {
     if (this.state !== "active") return;
     if (event.contentStart) {
       const start = record(event.contentStart);
+      const contentId = identifier(start.contentId);
+      // Duplicate/stale announcements cannot reassign an old block to B.
+      if (this.outputBlocks.has(contentId)) return;
+      let final = false;
       if (
         start.type === "TEXT" &&
         (start.role === "USER" || start.role === "ASSISTANT")
@@ -287,12 +306,42 @@ export class StreamingNovaSession implements NovaSession {
           "generationStage" in stage &&
           stage.generationStage === "FINAL"
         ) {
+          final = true;
           if (this.finalText.size >= 32)
             throw new Error("Too many transcript blocks.");
           this.finalText.set(identifier(start.contentId), {
             role: start.role === "USER" ? "user" : "assistant",
             text: "",
           });
+        }
+      }
+      if (start.type === "TEXT" && start.role === "USER")
+        this.nextResponse = true;
+      if (start.role === "ASSISTANT" || start.type === "TOOL") {
+        if (start.type === "AUDIO" || start.type === "TOOL") {
+          // A cancelled speculative response may still announce its first audio
+          // block. Keep it suppressed until a fresh response starts.
+          if (
+            this.nextResponse &&
+            !(
+              start.type === "AUDIO" &&
+              this.response?.interrupted &&
+              !this.response.audioStarted
+            )
+          )
+            this.beginResponse();
+          if (start.type === "AUDIO" && this.response)
+            this.response.audioStarted = true;
+        }
+        this.outputBlocks.set(contentId, {
+          type: start.type,
+          response: this.response,
+          startsResponse: this.nextResponse && !final,
+        });
+        // Evicted stale block IDs cannot affect a newer response.
+        if (this.outputBlocks.size > 1024) {
+          const oldest = this.outputBlocks.keys().next().value;
+          if (oldest) this.outputBlocks.delete(oldest);
         }
       }
       if (start.type === "TEXT" && start.role === "ASSISTANT") {
@@ -312,7 +361,8 @@ export class StreamingNovaSession implements NovaSession {
     }
     if (event.textOutput) {
       const output = record(event.textOutput);
-      const transcript = this.finalText.get(identifier(output.contentId));
+      const contentId = identifier(output.contentId);
+      const transcript = this.finalText.get(contentId);
       if (transcript && typeof output.content === "string") {
         if (transcript.text.length + output.content.length > 4000)
           throw new Error("Transcript block too large.");
@@ -339,13 +389,25 @@ export class StreamingNovaSession implements NovaSession {
           "interrupted" in marker &&
           marker.interrupted === true
         ) {
-          this.interrupt(identifier(output.completionId));
+          this.interrupt(this.outputBlocks.get(contentId)?.response);
+          return;
         }
+      }
+      const block = this.outputBlocks.get(contentId);
+      if (block?.startsResponse && typeof output.content === "string") {
+        block.response = this.beginResponse();
+        block.startsResponse = false;
       }
     }
     if (event.audioOutput) {
       const audio = record(event.audioOutput);
-      if (this.interruptedCompletions.has(identifier(audio.completionId)))
+      const block = this.outputBlocks.get(identifier(audio.contentId));
+      if (
+        block?.type !== "AUDIO" ||
+        !block.response ||
+        block.response !== this.response ||
+        block.response.interrupted
+      )
         return;
       if (
         typeof audio.content !== "string" ||
@@ -376,10 +438,17 @@ export class StreamingNovaSession implements NovaSession {
     }
     if (event.contentEnd) {
       const end = record(event.contentEnd);
-      if (end.stopReason === "INTERRUPTED") {
-        this.interrupt(identifier(end.completionId));
-      }
       const contentId = identifier(end.contentId);
+      const outputBlock = this.outputBlocks.get(contentId);
+      if (end.stopReason === "INTERRUPTED") {
+        this.interrupt(outputBlock?.response);
+      } else if (
+        end.stopReason === "END_TURN" &&
+        outputBlock?.type === "AUDIO" &&
+        outputBlock.response === this.response
+      ) {
+        this.nextResponse = true;
+      }
       const transcript = this.finalText.get(contentId);
       this.finalText.delete(contentId);
       if (
@@ -411,11 +480,17 @@ export class StreamingNovaSession implements NovaSession {
     }
   }
 
-  private interrupt(completionId: string): void {
-    if (this.interruptedCompletions.has(completionId)) return;
-    this.interruptedCompletions.add(completionId);
-    if (this.interruptedCompletions.size > 256)
-      throw new Error("Nova interruption limit reached.");
+  private beginResponse(): ResponseState {
+    this.response = { interrupted: false, audioStarted: false };
+    this.nextResponse = false;
+    return this.response;
+  }
+
+  private interrupt(response: ResponseState | undefined): void {
+    if (!response || response.interrupted) return;
+    response.interrupted = true;
+    if (response !== this.response) return;
+    this.nextResponse = true;
     this.callbacks.onInterrupted();
   }
 
@@ -494,6 +569,8 @@ export class StreamingNovaSession implements NovaSession {
     this.abort.abort();
     this.queue.end(true);
     this.toolBlocks.clear();
+    this.outputBlocks.clear();
+    this.response = undefined;
     this.assistantTextBlocks.clear();
     this.finalText.clear();
     this.transport.destroy();
