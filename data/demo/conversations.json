@@ -1,0 +1,193 @@
+[
+  {
+    "conversation_id": "chat-with-abe",
+    "channel": "text",
+    "pinned": true,
+    "title": "Chat with Abe",
+    "tag": "Plan AI",
+    "icon": "abe",
+    "preview": "Ask Abe about remaining benefits, estimates, and timing.",
+    "updated_at": "2026-10-03T22:46:00Z",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Hi Sarah. I'm Abe, your AI dental benefits guide. How can I help?",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  },
+  {
+    "conversation_id": "seed-peterson-crown",
+    "channel": "voice",
+    "title": "Your crown estimate",
+    "tag": "Crown quote",
+    "icon": "hospital",
+    "preview": "Tooth #19 crown in-network; member estimate $600.00",
+    "updated_at": "2026-10-03T22:51:00Z",
+    "recap": {
+      "origin": "sample",
+      "synthetic": true,
+      "provider_id": "DEMO_P1",
+      "provider_name": "Synthetic Dental Office DEMO_P1",
+      "procedure": "CROWN",
+      "constraints": [
+        "tooth #19"
+      ],
+      "plan_payment": "600.00",
+      "estimated_member_payment": "600.00",
+      "deductible_applied": "0.00",
+      "annual_maximum_remaining": "800.00",
+      "annual_maximum_remaining_afterward": "200.00",
+      "fsa_balance": "350.00",
+      "network_status": "in_network"
+    },
+    "actions": [
+      {
+        "id": "A",
+        "label": "Explain this estimate",
+        "prompt": "Explain the saved estimate and its assumptions."
+      },
+      {
+        "id": "B",
+        "label": "Find in-network options",
+        "prompt": "Show synthetic in-network providers near ZIP 27401 for a crown."
+      }
+    ],
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Hi Sarah. I can walk through the crown estimate using your demo plan facts.",
+        "source": "seed"
+      },
+      {
+        "role": "user",
+        "text": "What will a crown at DEMO_P1 cost if I do it this year?",
+        "source": "seed"
+      },
+      {
+        "role": "assistant",
+        "text": "For DEMO_P1's in-network crown, the demo calculator estimates the plan pays $600.00 and you pay $600.00. Your stored annual maximum remaining is $800.00, so $200.00 would remain afterward. This is a demo estimate, not a claim.",
+        "source": "seed"
+      }
+    ]
+  },
+  {
+    "conversation_id": "seed-lincoln-assist",
+    "channel": "text",
+    "title": "Lincoln Dental Assist",
+    "tag": "Plan AI",
+    "icon": "spark",
+    "preview": "Remaining annual maximum is $800.00.",
+    "updated_at": "2026-10-03T22:46:00Z",
+    "recap": {
+      "origin": "sample",
+      "synthetic": true,
+      "annual_maximum_remaining": "800.00",
+      "fsa_balance": "350.00"
+    },
+    "messages": [
+      {
+        "role": "user",
+        "text": "How much dental benefit do I have left?",
+        "source": "seed"
+      },
+      {
+        "role": "assistant",
+        "text": "Your demo annual dental maximum remaining is $800.00. Your stored FSA balance is $350.00. I do not change those balances after an estimate.",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  },
+  {
+    "conversation_id": "seed-metro-clean",
+    "channel": "text",
+    "title": "Metropolitan Dental",
+    "tag": "In-network",
+    "icon": "tooth",
+    "preview": "What's the scheduled date? Bi-annual cleaning.",
+    "updated_at": "2026-10-03T22:45:00Z",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "I can look up synthetic in-network options for a cleaning once you share a ZIP and date. I cannot confirm a real appointment.",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  },
+  {
+    "conversation_id": "seed-oral-surgery",
+    "channel": "text",
+    "title": "Oral Surgery Center",
+    "tag": "Pre-auth",
+    "icon": "heartbeat",
+    "preview": "Treatment plan PDF for wisdom teeth is not available in this demo.",
+    "updated_at": "2026-10-03T19:13:00Z",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "This demo cannot process pre-authorizations or store clinical PDFs. I can estimate a supported procedure if you have provider and fee facts.",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  },
+  {
+    "conversation_id": "seed-ortho-review",
+    "channel": "text",
+    "title": "Orthodontic Review",
+    "tag": "Tier 3",
+    "icon": "braces",
+    "preview": "Child dependent coverage is not in this demo member record.",
+    "updated_at": "2026-10-03T18:47:00Z",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Dependent and orthodontic coverage are not in the DEMO001 fixture, so I cannot verify those facts.",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  },
+  {
+    "conversation_id": "seed-fsa-triage",
+    "channel": "text",
+    "title": "FSA Year-End Triage",
+    "tag": "$350.00 left",
+    "icon": "wallet",
+    "preview": "Stored FSA balance is $350.00. This demo does not optimize spend-down.",
+    "updated_at": "2026-10-03T18:39:00Z",
+    "recap": {
+      "origin": "sample",
+      "synthetic": true,
+      "fsa_balance": "350.00"
+    },
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Your stored FSA balance is $350.00. I cannot decide medical timing or automatically apply FSA funds.",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  },
+  {
+    "conversation_id": "seed-nightguard",
+    "channel": "text",
+    "title": "Nightguard Claim",
+    "tag": "Claim demo",
+    "icon": "shield",
+    "preview": "Claims adjudication is not available in this demo.",
+    "updated_at": "2026-09-29T12:00:00Z",
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "I cannot process claims. I can only explain stored demo balances and calculator estimates.",
+        "source": "seed"
+      }
+    ],
+    "actions": []
+  }
+]

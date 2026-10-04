@@ -75,6 +75,10 @@ export class StreamingNovaSession implements NovaSession {
   private readonly seenToolIds = new Set<string>();
   private readonly interruptedCompletions = new Set<string>();
   private readonly assistantTextBlocks = new Set<string>();
+  private readonly finalText = new Map<
+    string,
+    { role: "user" | "assistant"; text: string }
+  >();
   private activeTools = 0;
   private running: Promise<void> | undefined;
   private closing: Promise<void> | undefined;
@@ -264,6 +268,33 @@ export class StreamingNovaSession implements NovaSession {
     if (this.state !== "active") return;
     if (event.contentStart) {
       const start = record(event.contentStart);
+      if (
+        start.type === "TEXT" &&
+        (start.role === "USER" || start.role === "ASSISTANT")
+      ) {
+        let stage: unknown;
+        try {
+          stage =
+            typeof start.additionalModelFields === "string"
+              ? JSON.parse(start.additionalModelFields)
+              : undefined;
+        } catch {
+          stage = undefined;
+        }
+        if (
+          stage &&
+          typeof stage === "object" &&
+          "generationStage" in stage &&
+          stage.generationStage === "FINAL"
+        ) {
+          if (this.finalText.size >= 32)
+            throw new Error("Too many transcript blocks.");
+          this.finalText.set(identifier(start.contentId), {
+            role: start.role === "USER" ? "user" : "assistant",
+            text: "",
+          });
+        }
+      }
       if (start.type === "TEXT" && start.role === "ASSISTANT") {
         if (this.assistantTextBlocks.size >= 32)
           throw new Error("Too many text blocks.");
@@ -281,6 +312,12 @@ export class StreamingNovaSession implements NovaSession {
     }
     if (event.textOutput) {
       const output = record(event.textOutput);
+      const transcript = this.finalText.get(identifier(output.contentId));
+      if (transcript && typeof output.content === "string") {
+        if (transcript.text.length + output.content.length > 4000)
+          throw new Error("Transcript block too large.");
+        transcript.text += output.content;
+      }
       // AWS samples also emit a JSON interruption marker in assistant text.
       // Only recognize the exact structured marker, never ordinary caller text.
       if (
@@ -343,6 +380,18 @@ export class StreamingNovaSession implements NovaSession {
         this.interrupt(identifier(end.completionId));
       }
       const contentId = identifier(end.contentId);
+      const transcript = this.finalText.get(contentId);
+      this.finalText.delete(contentId);
+      if (
+        transcript?.text.trim() &&
+        !/^\s*\{\s*"interrupted"\s*:\s*true\s*\}\s*$/.test(transcript.text)
+      ) {
+        this.callbacks.onTranscript?.({
+          event_id: contentId,
+          role: transcript.role,
+          text: transcript.text.trim(),
+        });
+      }
       this.assistantTextBlocks.delete(contentId);
       const block = this.toolBlocks.get(contentId);
       if (block) {
@@ -446,6 +495,7 @@ export class StreamingNovaSession implements NovaSession {
     this.queue.end(true);
     this.toolBlocks.clear();
     this.assistantTextBlocks.clear();
+    this.finalText.clear();
     this.transport.destroy();
     try {
       if (error) this.callbacks.onError(error);

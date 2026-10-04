@@ -15,4 +15,11 @@ cd "$(dirname "$0")/.."
   ../backend/.venv/bin/python ../scripts/with-timeout.py 60 npm run typecheck
   ../backend/.venv/bin/python ../scripts/with-timeout.py 60 npm run build
 )
+(
+  cd frontend
+  ../backend/.venv/bin/python ../scripts/with-timeout.py 60 npm test
+  ../backend/.venv/bin/python ../scripts/with-timeout.py 30 npm run lint
+  ../backend/.venv/bin/python ../scripts/with-timeout.py 60 npm run typecheck
+  ../backend/.venv/bin/python ../scripts/with-timeout.py 60 npm run build
+)
 ./scripts/smoke-benefits.sh

@@ -10,6 +10,7 @@ import type {
   NovaCallbacks,
   ToolDefinition,
   ToolInvocation,
+  TranscriptEvent,
 } from "../src/nova/types.js";
 
 const tools: ToolDefinition[] = [
@@ -33,6 +34,7 @@ function harness(
   const audio: Buffer[] = [];
   const invocations: ToolInvocation[] = [];
   const errors: Error[] = [];
+  const transcripts: TranscriptEvent[] = [];
   let interrupted = 0;
   let closed = 0;
   let destroyed = 0;
@@ -58,6 +60,9 @@ function harness(
   const session = new StreamingNovaSession(
     "matthew",
     {
+      onTranscript: (event) => {
+        transcripts.push(event);
+      },
       onAudio: (pcm) => {
         audio.push(pcm);
       },
@@ -84,6 +89,7 @@ function harness(
     audio,
     invocations,
     errors,
+    transcripts,
     get interrupted() {
       return interrupted;
     },
@@ -519,5 +525,38 @@ test("multiple completed responses and a transient tool failure preserve the liv
   assert.equal(h.closed, 0);
   assert.equal(h.invocations.length, 3);
   assert.equal(h.incoming.filter((event) => event.toolResult).length, 3);
+  await h.close();
+});
+
+test("persists final speaker text once and ignores speculative text and interruption markers", async () => {
+  const h = harness();
+  await h.session.start("AI assistant", tools);
+  for (const [id, role, stage, text] of [
+    ["spec", "ASSISTANT", "SPECULATIVE", "An unfinished thought"],
+    ["user-final", "USER", "FINAL", " What are my benefits? "],
+    ["assistant-final", "ASSISTANT", "FINAL", "You have $800 remaining."],
+    ["marker", "ASSISTANT", "FINAL", '{"interrupted":true}'],
+  ]) {
+    h.outgoing.push({
+      contentStart: {
+        type: "TEXT",
+        role,
+        contentId: id,
+        additionalModelFields: JSON.stringify({ generationStage: stage }),
+      },
+    });
+    h.outgoing.push({ textOutput: { contentId: id, content: text } });
+    h.outgoing.push({ contentEnd: { contentId: id, stopReason: "END_TURN" } });
+    h.outgoing.push({ contentEnd: { contentId: id, stopReason: "END_TURN" } });
+  }
+  await h.settle();
+  assert.deepEqual(h.transcripts, [
+    { event_id: "user-final", role: "user", text: "What are my benefits?" },
+    {
+      event_id: "assistant-final",
+      role: "assistant",
+      text: "You have $800 remaining.",
+    },
+  ]);
   await h.close();
 });

@@ -3,7 +3,12 @@ import { WebSocket } from "ws";
 import { mulawToPcm16, pcm16ToMulaw } from "./audio.js";
 import { type AbeBackend, BackendError } from "./backend.js";
 import type { Logger } from "./log.js";
-import type { NovaFactory, NovaSession, ToolInvocation } from "./nova/types.js";
+import type {
+  NovaFactory,
+  NovaSession,
+  ToolInvocation,
+  TranscriptEvent,
+} from "./nova/types.js";
 import type { TelephonyAdapter, TelephonyEvent } from "./telephony.js";
 
 export interface CallOptions {
@@ -36,6 +41,9 @@ export class VoiceCall {
   private readonly durationTimer: NodeJS.Timeout;
   private readonly heartbeat: NodeJS.Timeout;
   private alive = true;
+  private transcriptQueue: TranscriptEvent[] = [];
+  private transcriptWork: Promise<void> | undefined;
+  private transcriptIncomplete = false;
 
   constructor(private readonly options: CallOptions) {
     this.startupTimer = setTimeout(
@@ -121,6 +129,15 @@ export class VoiceCall {
       if (this.closed) return;
       this.event("session_created");
       this.nova = this.options.novaFactory.create({
+        onTranscript: (event) => {
+          if (this.closed || !this.options.backend.appendTranscripts) return;
+          if (this.transcriptQueue.length >= 100) {
+            this.transcriptIncomplete = true;
+            return;
+          }
+          this.transcriptQueue.push(event);
+          this.saveTranscripts();
+        },
         onAudio: (pcm) => this.sendAudio(pcm),
         onInterrupted: () => {
           this.pcmRemainder = Buffer.alloc(0);
@@ -179,6 +196,28 @@ export class VoiceCall {
     }
   }
 
+  private saveTranscripts(): void {
+    if (
+      this.transcriptWork ||
+      !this.sessionId ||
+      !this.options.backend.appendTranscripts
+    )
+      return;
+    this.transcriptWork = (async () => {
+      while (this.transcriptQueue.length && this.sessionId) {
+        const batch = this.transcriptQueue.splice(0, 20);
+        try {
+          await this.options.backend.appendTranscripts?.(this.sessionId, batch);
+        } catch {
+          this.transcriptIncomplete = true;
+          this.event("transcript_save_failed");
+        }
+      }
+    })().finally(() => {
+      this.transcriptWork = undefined;
+    });
+  }
+
   private sendAudio(pcm: Buffer) {
     if (this.closed || !this.streamId) return;
     const aligned = this.pcmRemainder.length
@@ -231,6 +270,23 @@ export class VoiceCall {
       await this.nova?.close().catch(() => this.event("nova_cleanup_failed"));
       await this.opening;
       if (this.sessionId) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          this.transcriptWork,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(() => {
+              this.transcriptIncomplete = true;
+              resolve();
+            }, 2000);
+          }),
+        ]);
+        clearTimeout(timer);
+        if (this.transcriptIncomplete) {
+          this.transcriptQueue = [];
+          await this.options.backend
+            .appendTranscripts?.(this.sessionId, [], true)
+            .catch(() => this.event("transcript_status_failed"));
+        }
         await this.options.backend
           .deleteSession(this.sessionId)
           .catch(() => this.event("session_cleanup_failed"));

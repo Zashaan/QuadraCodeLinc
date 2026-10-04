@@ -5,7 +5,11 @@ import {
   providerResultSchema,
   retrievalResultSchema,
 } from "./benefit-schemas.js";
-import type { ToolDefinition, ToolInvocation } from "./nova/types.js";
+import type {
+  ToolDefinition,
+  ToolInvocation,
+  TranscriptEvent,
+} from "./nova/types.js";
 
 const toolDefinition = z
   .object({
@@ -126,6 +130,11 @@ export interface BackendSession {
 }
 
 export interface AbeBackend {
+  appendTranscripts?(
+    sessionId: string,
+    events: TranscriptEvent[],
+    incomplete?: boolean,
+  ): Promise<void>;
   createSession(callId: string, signal: AbortSignal): Promise<BackendSession>;
   invokeTool(
     sessionId: string,
@@ -203,6 +212,13 @@ export function createBackendClient(
   }
 
   return {
+    async appendTranscripts(sessionId, events, incomplete = false) {
+      await request(
+        `/sessions/${encodeURIComponent(sessionId)}/transcripts`,
+        "POST",
+        { events, incomplete },
+      );
+    },
     async createSession(callId, signal) {
       const result = sessionSchema.safeParse(
         await request("/sessions", "POST", { call_id: callId }, signal),
