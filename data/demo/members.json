@@ -1,8 +1,12 @@
 [
   {
     "member_id": "DEMO001",
-    "name": "Demo Member",
+    "name": "Synthetic Demo Member",
+    "employer_id": "SYNTHETIC_CODELINC",
     "plan_id": "DEMO_DENTAL_PPO",
+    "plan_year": 2026,
+    "state": "PA",
+    "zip_code": "19103",
     "currency": "USD",
     "annual_maximum": 2000,
     "annual_maximum_used": 1200,

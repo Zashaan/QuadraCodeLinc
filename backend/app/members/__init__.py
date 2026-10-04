@@ -1,1 +1,1 @@
-"""Member facts are read through a replaceable repository boundary."""
+"""Exact member facts are read through synthetic or DynamoDB repositories."""

@@ -1,0 +1,70 @@
+{
+  "notice": "SYNTHETIC DEMO PLAN CONTENT — NOT AN ACTUAL LINCOLN PLAN",
+  "chunks": [
+    {
+      "text": "The annual maximum is the most this synthetic dental plan pays for covered services during the plan year. Payments already made reduce the remaining annual maximum. Coverage rules and limitations still apply.",
+      "metadata": {
+        "source_document": "Synthetic Demo Dental Plan Summary",
+        "source_id": "synthetic-demo-plan-2026",
+        "section": "Annual maximum",
+        "plan_id": "DEMO_DENTAL_PPO",
+        "employer": "SYNTHETIC_CODELINC",
+        "plan_year": 2026,
+        "state": "PA",
+        "doc_type": "summary_of_benefits"
+      }
+    },
+    {
+      "text": "Ceramic crowns are listed as major services in this synthetic demo plan. The plan pays the percentage configured for the member's network status after any applicable deductible, subject to the annual maximum and the stated frequency limit.",
+      "metadata": {
+        "source_document": "Synthetic Demo Dental Plan Summary",
+        "source_id": "synthetic-demo-plan-2026",
+        "section": "Major services — crowns",
+        "plan_id": "DEMO_DENTAL_PPO",
+        "employer": "SYNTHETIC_CODELINC",
+        "plan_year": 2026,
+        "state": "PA",
+        "doc_type": "summary_of_benefits"
+      }
+    },
+    {
+      "text": "Out-of-network services may use a different coverage percentage and may leave the member responsible for charges above the plan's allowed amount. Provider charge and allowed amount are separate values.",
+      "metadata": {
+        "source_document": "Synthetic Demo Dental Plan Summary",
+        "source_id": "synthetic-demo-plan-2026",
+        "section": "Out-of-network coverage",
+        "plan_id": "DEMO_DENTAL_PPO",
+        "employer": "SYNTHETIC_CODELINC",
+        "plan_year": 2026,
+        "state": "PA",
+        "doc_type": "summary_of_benefits"
+      }
+    },
+    {
+      "text": "This synthetic demo plan has no waiting period for the listed preventive, basic, or major procedures. Frequency limits may still apply and must be checked separately.",
+      "metadata": {
+        "source_document": "Synthetic Demo Dental Plan Summary",
+        "source_id": "synthetic-demo-plan-2026",
+        "section": "Waiting periods",
+        "plan_id": "DEMO_DENTAL_PPO",
+        "employer": "SYNTHETIC_CODELINC",
+        "plan_year": 2026,
+        "state": "PA",
+        "doc_type": "summary_of_benefits"
+      }
+    },
+    {
+      "text": "This unrelated fixture exists only to verify metadata filtering.",
+      "metadata": {
+        "source_document": "Other Synthetic Plan",
+        "source_id": "other-plan-2026",
+        "section": "Test",
+        "plan_id": "OTHER_PLAN",
+        "employer": "OTHER_SYNTHETIC_EMPLOYER",
+        "plan_year": 2026,
+        "state": "NY",
+        "doc_type": "summary_of_benefits"
+      }
+    }
+  ]
+}

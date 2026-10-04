@@ -17,12 +17,28 @@ from app.api.models import (
     CreateSessionResponse,
     InvokeToolRequest,
     InvokeToolResponse,
+    ToolResult,
 )
+from app.calculator.benefits import BenefitCalculator
 from app.config import Settings
 from app.conversation.sessions import SessionCapacityError, SessionStore
-from app.members.repository import DemoMemberRepository, MemberRepository
+from app.members.repository import (
+    DynamoDBMemberRepository,
+    MemberRepository,
+    SyntheticMemberRepository,
+)
+from app.plans.repository import LocalPlanRulesRepository, PlanRulesRepository
+from app.providers.repository import ProviderRepository, SyntheticProviderRepository
+from app.retrieval.repository import (
+    BedrockKnowledgeBaseRetriever,
+    LocalPlanDocumentRetriever,
+    PlanDocumentRetriever,
+)
+from app.tools.calculate_benefit import CalculateBenefitTool
 from app.tools.get_member import GetMemberTool
 from app.tools.resolve_member_id import ResolveMemberIdTool
+from app.tools.retrieve_plan_context import RetrievePlanContextTool
+from app.tools.search_providers import SearchProvidersTool
 
 logger = logging.getLogger("abe")
 logger.setLevel(logging.INFO)
@@ -42,12 +58,36 @@ def create_app(
     settings: Settings | None = None,
     repository: MemberRepository | None = None,
     sessions: SessionStore | None = None,
+    plan_repository: PlanRulesRepository | None = None,
+    retriever: PlanDocumentRetriever | None = None,
+    provider_repository: ProviderRepository | None = None,
+    calculator: BenefitCalculator | None = None,
 ) -> FastAPI:
     config = settings or Settings.from_environment()
     store = sessions or SessionStore()
-    members = repository or DemoMemberRepository()
+    if repository is not None:
+        members = repository
+    elif config.member_repository == "dynamodb":
+        members = DynamoDBMemberRepository(config.dynamodb_member_table)
+    else:
+        members = SyntheticMemberRepository()
+    plans = plan_repository or LocalPlanRulesRepository()
+    providers = provider_repository or SyntheticProviderRepository()
+    if retriever is not None:
+        documents = retriever
+    elif config.rag_provider == "bedrock":
+        documents = BedrockKnowledgeBaseRetriever(
+            config.bedrock_knowledge_base_id, region=config.aws_region
+        )
+    else:
+        documents = LocalPlanDocumentRetriever()
     member_tool = GetMemberTool(members)
     resolver = ResolveMemberIdTool(members)
+    plan_context_tool = RetrievePlanContextTool(documents, members)
+    provider_tool = SearchProvidersTool(providers, plans, members)
+    calculator_tool = CalculateBenefitTool(
+        calculator or BenefitCalculator(), members, plans, providers
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -95,7 +135,13 @@ def create_app(
         return CreateSessionResponse(
             session_id=session.session_id,
             system_prompt=SYSTEM_PROMPT,
-            tools=[resolver.definition, member_tool.definition],
+            tools=[
+                resolver.definition,
+                member_tool.definition,
+                plan_context_tool.definition,
+                provider_tool.definition,
+                calculator_tool.definition,
+            ],
         )
 
     @app.delete("/sessions/{session_id}", status_code=204, dependencies=[Depends(authenticate)])
@@ -120,26 +166,68 @@ def create_app(
                 resolution = resolver.invoke(body.arguments)
             except ValidationError:
                 raise HTTPException(422, "Invalid tool input or result") from None
-            session.member_id = resolution.member_id
+            if resolution.member_id is not None:
+                if session.member_id and session.member_id != resolution.member_id:
+                    session.latest_correction = resolution.member_id
+                session.member_id = resolution.member_id
             session.last_tool_call_id = body.tool_call_id
             session.last_tool_result = None
             log_event("member_id_resolved", status=resolution.status)
             return InvokeToolResponse(
                 tool_name=resolver.name, tool_call_id=body.tool_call_id, result=resolution
             )
-        if body.tool_name != member_tool.name:
-            raise HTTPException(400, "Unknown tool")
-        log_event("tool_invoked", tool=member_tool.name)
+        result: ToolResult
         try:
-            result = member_tool.invoke(body.arguments)
+            if body.tool_name == member_tool.name:
+                member_result = member_tool.invoke(body.arguments)
+                result = member_result
+                if member_result.member is not None:
+                    session.member_id = member_result.member.member_id
+                    session.plan_id = member_result.member.plan_id
+                    session.zip_code = member_result.member.zip_code
+            elif body.tool_name == plan_context_tool.name:
+                plan_result = plan_context_tool.invoke_with_member(
+                    body.arguments, session.member_id
+                )
+                result = plan_result
+                session.current_intent = "plan_explanation"
+                session.citations = tuple(chunk.metadata for chunk in plan_result.chunks[:5])
+            elif body.tool_name == provider_tool.name:
+                provider_result = provider_tool.invoke_with_member(
+                    body.arguments, session.member_id
+                )
+                result = provider_result
+                session.current_intent = "provider_search"
+                procedure = body.arguments.get("procedure")
+                zip_code = body.arguments.get("zip_code")
+                if isinstance(procedure, str):
+                    session.procedure = procedure
+                if isinstance(zip_code, str):
+                    session.zip_code = zip_code
+            elif body.tool_name == calculator_tool.name:
+                calculation_result = calculator_tool.invoke_with_member(
+                    body.arguments, session.member_id
+                )
+                result = calculation_result
+                session.current_intent = "benefit_estimate"
+                procedure = body.arguments.get("procedure")
+                provider_id = body.arguments.get("provider_id")
+                if isinstance(procedure, str):
+                    if session.procedure and session.procedure != procedure:
+                        session.latest_correction = procedure
+                    session.procedure = procedure
+                if isinstance(provider_id, str):
+                    session.provider_id = provider_id
+            else:
+                raise HTTPException(400, "Unknown tool")
         except ValidationError:
             raise HTTPException(422, "Invalid tool input or result") from None
-        session.member_id = result.member.member_id if result.member else result.member_id
+        log_event("tool_invoked", tool=body.tool_name)
         session.last_tool_call_id = body.tool_call_id
         session.last_tool_result = result
-        log_event("get_member_completed", status=result.status)
+        log_event("tool_completed", tool=body.tool_name, status=result.status)
         return InvokeToolResponse(
-            tool_name=member_tool.name,
+            tool_name=body.tool_name,
             tool_call_id=body.tool_call_id,
             result=result,
         )

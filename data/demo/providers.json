@@ -1,0 +1,55 @@
+{
+  "notice": "SYNTHETIC DEMO DATA — NOT REAL DENTISTS",
+  "providers": [
+    {
+      "provider_id": "SYNTH001",
+      "name": "Synthetic Smile Dental",
+      "specialty": "general_dentistry",
+      "network_status": "in_network",
+      "zip_code": "19103",
+      "latitude": "39.9526",
+      "longitude": "-75.1740",
+      "fees": {
+        "D1110": {"provider_charge": "140.00", "allowed_amount": "110.00"},
+        "D2391": {"provider_charge": "260.00", "allowed_amount": "210.00"},
+        "D2740": {"provider_charge": "1400.00", "allowed_amount": "1200.00"},
+        "D3310": {"provider_charge": "1250.00", "allowed_amount": "1000.00"}
+      },
+      "source": "synthetic_demo_provider_fixture",
+      "verification_status": "synthetic",
+      "verified_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "provider_id": "SYNTH002",
+      "name": "Example Dental Studio — Synthetic",
+      "specialty": "general_dentistry",
+      "network_status": "out_of_network",
+      "zip_code": "19104",
+      "latitude": "39.9580",
+      "longitude": "-75.1990",
+      "fees": {
+        "D2391": {"provider_charge": "240.00", "allowed_amount": "180.00"},
+        "D2740": {"provider_charge": "1300.00", "allowed_amount": "1000.00"},
+        "D3310": {"provider_charge": "1150.00", "allowed_amount": "900.00"}
+      },
+      "source": "synthetic_demo_provider_fixture",
+      "verification_status": "synthetic",
+      "verified_at": "2026-01-01T00:00:00Z"
+    },
+    {
+      "provider_id": "SYNTH003",
+      "name": "Demo Endodontics — Synthetic",
+      "specialty": "endodontics",
+      "network_status": "in_network",
+      "zip_code": "19106",
+      "latitude": "39.9496",
+      "longitude": "-75.1457",
+      "fees": {
+        "D3310": {"provider_charge": "1350.00", "allowed_amount": "1050.00"}
+      },
+      "source": "synthetic_demo_provider_fixture",
+      "verification_status": "synthetic",
+      "verified_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

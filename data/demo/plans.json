@@ -1,0 +1,70 @@
+{
+  "notice": "SYNTHETIC DEMO DATA — NOT REAL LINCOLN DATA",
+  "plans": [
+    {
+      "plan_id": "DEMO_DENTAL_PPO",
+      "employer_id": "SYNTHETIC_CODELINC",
+      "plan_year": 2026,
+      "plan_name": "SYNTHETIC DEMO PLAN",
+      "effective_date": "2026-01-01",
+      "expiration_date": "2026-12-31",
+      "currency": "USD",
+      "deductible": "50.00",
+      "annual_maximum": "2000.00",
+      "procedures": [
+        {
+          "procedure_id": "D1110",
+          "display_name": "adult cleaning",
+          "aliases": ["cleaning", "dental cleaning", "adult cleaning"],
+          "category": "preventive",
+          "allowed_amount_required": true,
+          "network_rules": {
+            "in_network": {"coverage_rate": "1.00", "deductible_applies": false},
+            "out_of_network": {"coverage_rate": "0.80", "deductible_applies": false}
+          },
+          "waiting_period_months": 0,
+          "frequency_limit": "Two cleanings per plan year in this synthetic demo."
+        },
+        {
+          "procedure_id": "D2391",
+          "display_name": "one-surface composite filling",
+          "aliases": ["filling", "composite filling", "tooth filling"],
+          "category": "basic",
+          "allowed_amount_required": true,
+          "network_rules": {
+            "in_network": {"coverage_rate": "0.80", "deductible_applies": true},
+            "out_of_network": {"coverage_rate": "0.60", "deductible_applies": true}
+          },
+          "waiting_period_months": 0,
+          "frequency_limit": null
+        },
+        {
+          "procedure_id": "D2740",
+          "display_name": "ceramic crown",
+          "aliases": ["crown", "dental crown", "cap", "ceramic crown"],
+          "category": "major",
+          "allowed_amount_required": true,
+          "network_rules": {
+            "in_network": {"coverage_rate": "0.50", "deductible_applies": true},
+            "out_of_network": {"coverage_rate": "0.40", "deductible_applies": true}
+          },
+          "waiting_period_months": 0,
+          "frequency_limit": "One crown per tooth every five years in this synthetic demo."
+        },
+        {
+          "procedure_id": "D3310",
+          "display_name": "anterior root canal",
+          "aliases": ["root canal", "anterior root canal", "endodontic treatment"],
+          "category": "major",
+          "allowed_amount_required": true,
+          "network_rules": {
+            "in_network": {"coverage_rate": "0.50", "deductible_applies": true},
+            "out_of_network": {"coverage_rate": "0.40", "deductible_applies": true}
+          },
+          "waiting_period_months": 0,
+          "frequency_limit": null
+        }
+      ]
+    }
+  ]
+}

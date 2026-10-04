@@ -137,11 +137,13 @@ test("call buffers startup audio, forwards tool result, converts audio and clear
   });
   state.callbacks.onAudio(Buffer.alloc(4));
   state.callbacks.onInterrupted();
+  state.callbacks.onAudio(Buffer.from([1, 0, 1, 0]));
   assert.deepEqual(
     state.socket.sent.map((message) => JSON.parse(message)),
     [
       { event: "media", streamSid, media: { payload: "//8=" } },
       { event: "clear", streamSid },
+      { event: "media", streamSid, media: { payload: "//8=" } },
     ],
   );
   await state.call.close();

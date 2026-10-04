@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from time import monotonic
 from uuid import uuid4
 
-from app.tools.get_member import GetMemberResult
+from app.api.models import ToolResult
+from app.retrieval.repository import SourceMetadata
 
 
 @dataclass
@@ -13,8 +14,16 @@ class Session:
     created_at: float
     last_activity_at: float
     member_id: str | None = None
+    plan_id: str | None = None
+    current_intent: str | None = None
+    procedure: str | None = None
+    provider_id: str | None = None
+    zip_code: str | None = None
+    recent_constraints: tuple[str, ...] = ()
+    latest_correction: str | None = None
+    citations: tuple[SourceMetadata, ...] = ()
     last_tool_call_id: str | None = None
-    last_tool_result: GetMemberResult | None = None
+    last_tool_result: ToolResult | None = None
 
 
 class SessionCapacityError(Exception):
@@ -24,7 +33,7 @@ class SessionCapacityError(Exception):
 class SessionStore:
     """Single-worker store; call synchronously inside the async request handlers.
 
-    Retains only the latest tool result. TTL is lazy-pruned on every operation;
+    Retains bounded structured context and only the latest tool result. TTL is lazy-pruned;
     capacity also bounds memory when no requests arrive to trigger expiry.
     """
 

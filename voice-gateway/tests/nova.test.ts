@@ -312,9 +312,18 @@ test("interruptions notify playback and discard late audio from the interrupted 
   h.outgoing.push({
     audioOutput: { completionId: "new", content: "AQABAA==" },
   });
+  toolEvents(
+    h.outgoing,
+    "get_member",
+    '{"member_id":"DEMO001"}',
+    "after-interruption",
+    "after-interruption-block",
+  );
   await h.settle();
   assert.equal(h.interrupted, 1);
   assert.deepEqual(h.audio, [Buffer.from([1, 0, 1, 0])]);
+  assert.equal(h.invocations.at(-1)?.toolUseId, "after-interruption");
+  assert.equal(h.closed, 0);
   await h.close();
 });
 

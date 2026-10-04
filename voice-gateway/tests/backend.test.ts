@@ -306,3 +306,104 @@ test("session can advertise the backend ID resolver", async (t) => {
     advertised,
   );
 });
+
+test("validates retrieval, provider-search, and deterministic estimate results", async (t) => {
+  let response: unknown;
+  t.mock.method(globalThis, "fetch", async () => Response.json(response));
+  const cases = [
+    {
+      toolName: "retrieve_plan_context",
+      result: {
+        status: "verified",
+        chunks: [
+          {
+            text: "Synthetic supported language.",
+            metadata: {
+              source_document: "Synthetic Demo Dental Plan Summary",
+              source_id: "synthetic-demo-plan-2026",
+              section: "Crowns",
+              plan_id: "DEMO_DENTAL_PPO",
+              employer: "SYNTHETIC_CODELINC",
+              plan_year: 2026,
+              state: "PA",
+              doc_type: "summary_of_benefits",
+            },
+            score: 2,
+          },
+        ],
+      },
+    },
+    {
+      toolName: "search_providers",
+      result: {
+        status: "success",
+        providers: [
+          {
+            provider: {
+              provider_id: "SYNTH001",
+              name: "Synthetic Smile Dental",
+              specialty: "general_dentistry",
+              network_status: "in_network",
+              zip_code: "19103",
+              latitude: "39.9526",
+              longitude: "-75.1740",
+              fees: {
+                D2740: {
+                  provider_charge: "1400.00",
+                  allowed_amount: "1200.00",
+                },
+              },
+              source: "synthetic_demo_provider_fixture",
+              verification_status: "synthetic",
+              verified_at: "2026-01-01T00:00:00Z",
+            },
+            distance_miles: "0.0",
+          },
+        ],
+        source: "synthetic_demo_provider_repository",
+      },
+    },
+    {
+      toolName: "calculate_benefit",
+      result: {
+        status: "estimated",
+        procedure_id: "D2740",
+        procedure: "ceramic crown",
+        category: "major",
+        treatment_date: "2026-06-01",
+        network_status: "in_network",
+        provider_charge: "1400.00",
+        allowed_amount: "1200.00",
+        deductible_applied: "0.00",
+        amount_after_deductible: "1200.00",
+        coverage_rate: "0.50",
+        plan_payment_before_annual_maximum: "600.00",
+        plan_payment: "600.00",
+        estimated_member_payment: "800.00",
+        amount_not_covered: "200.00",
+        annual_maximum_consumed: "600.00",
+        annual_maximum_remaining_after: "200.00",
+        calculation_steps: ["Structured step."],
+        assumptions: ["Synthetic assumption."],
+        warnings: ["Not a guarantee."],
+        provenance: { arithmetic: "deterministic_python_decimal" },
+      },
+    },
+  ];
+  for (const item of cases) {
+    const invocation = {
+      toolName: item.toolName,
+      toolUseId: `call-${item.toolName}`,
+      input: {},
+    };
+    response = {
+      tool_name: item.toolName,
+      tool_call_id: invocation.toolUseId,
+      result: item.result,
+    };
+    assert.deepEqual(
+      await client().invokeTool(sessionId, invocation, signal()),
+      item.result,
+    );
+  }
+});

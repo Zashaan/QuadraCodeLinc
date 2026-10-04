@@ -1,1 +1,1 @@
-No infrastructure is provisioned for this milestone. Run the gateway and private backend locally; tunnel only the gateway. Future infrastructure requires explicit authorization.
+No infrastructure is provisioned for this milestone. Run the gateway and private backend locally; tunnel only the gateway. The DynamoDB member and Bedrock Knowledge Base adapters connect only when explicitly selected and configured with existing resource identifiers. Manual least-privilege setup is documented in `docs/milestone-2.md`. Future infrastructure requires explicit authorization.

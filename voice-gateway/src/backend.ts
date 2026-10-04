@@ -3,7 +3,13 @@ import type { ToolDefinition, ToolInvocation } from "./nova/types.js";
 
 const toolDefinition = z
   .object({
-    name: z.enum(["get_member", "resolve_member_id"]),
+    name: z.enum([
+      "get_member",
+      "resolve_member_id",
+      "retrieve_plan_context",
+      "search_providers",
+      "calculate_benefit",
+    ]),
     description: z.string().min(1),
     input_schema: z.record(z.string(), z.unknown()),
   })
@@ -22,7 +28,11 @@ const memberSchema = z
   .object({
     member_id: z.string().min(1),
     name: z.string().min(1),
+    employer_id: z.string().min(1),
     plan_id: z.string().min(1),
+    plan_year: z.number().int(),
+    state: z.string().regex(/^[A-Z]{2}$/),
+    zip_code: z.string().regex(/^\d{5}$/),
     currency: z.literal("USD"),
     annual_maximum: amount,
     annual_maximum_used: amount,
@@ -55,6 +65,105 @@ const resolutionSchema = z.discriminatedUnion("status", [
     })
     .strict(),
 ]);
+const sourceMetadataSchema = z
+  .object({
+    source_document: z.string().min(1),
+    source_id: z.string().min(1),
+    section: z.string().min(1).nullable().optional(),
+    page: z.number().int().positive().nullable().optional(),
+    plan_id: z.string().min(1),
+    employer: z.string().min(1),
+    plan_year: z.number().int(),
+    state: z.string().regex(/^[A-Z]{2}$/),
+    doc_type: z.string().min(1),
+  })
+  .strict();
+const retrievalSchema = z
+  .object({
+    status: z.enum(["verified", "unverified"]),
+    chunks: z.array(
+      z
+        .object({
+          text: z.string().min(1),
+          metadata: sourceMetadataSchema,
+          score: z.number().nonnegative().nullable().optional(),
+        })
+        .strict(),
+    ),
+    message: z.string().nullable().optional(),
+  })
+  .strict();
+const moneyString = z.string().regex(/^\d+(?:\.\d+)?$/);
+const feeSchema = z
+  .object({
+    provider_charge: moneyString,
+    allowed_amount: moneyString.nullable().optional(),
+  })
+  .strict();
+const providerSchema = z
+  .object({
+    provider_id: z.string().min(1),
+    name: z.string().min(1),
+    specialty: z.string().min(1),
+    network_status: z.enum(["in_network", "out_of_network"]),
+    zip_code: z.string().regex(/^\d{5}$/),
+    latitude: moneyString.or(z.string().regex(/^-\d+(?:\.\d+)?$/)),
+    longitude: moneyString.or(z.string().regex(/^-\d+(?:\.\d+)?$/)),
+    fees: z.record(z.string(), feeSchema),
+    source: z.string().min(1),
+    verification_status: z.enum(["synthetic", "verified", "unverified"]),
+    verified_at: z.string().nullable().optional(),
+  })
+  .strict();
+const providerSearchSchema = z
+  .object({
+    status: z.enum(["success", "unavailable"]),
+    providers: z.array(
+      z
+        .object({
+          provider: providerSchema,
+          distance_miles: moneyString.nullable().optional(),
+        })
+        .strict(),
+    ),
+    message: z.string().nullable().optional(),
+    source: z.literal("synthetic_demo_provider_repository"),
+  })
+  .strict();
+const estimateSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("estimated"),
+      procedure_id: z.string().min(1),
+      procedure: z.string().min(1),
+      category: z.string().min(1),
+      treatment_date: z.string(),
+      network_status: z.enum(["in_network", "out_of_network"]),
+      provider_charge: moneyString,
+      allowed_amount: moneyString,
+      deductible_applied: moneyString,
+      amount_after_deductible: moneyString,
+      coverage_rate: moneyString,
+      plan_payment_before_annual_maximum: moneyString,
+      plan_payment: moneyString,
+      estimated_member_payment: moneyString,
+      amount_not_covered: moneyString,
+      annual_maximum_consumed: moneyString,
+      annual_maximum_remaining_after: moneyString,
+      calculation_steps: z.array(z.string()),
+      assumptions: z.array(z.string()),
+      warnings: z.array(z.string()),
+      provenance: z.record(z.string(), z.string()),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.enum(["missing_input", "unavailable"]),
+      missing: z.array(z.string()),
+      message: z.string().min(1),
+    })
+    .strict(),
+]);
 const toolResponseSchema = z.discriminatedUnion("tool_name", [
   z
     .object({
@@ -68,6 +177,27 @@ const toolResponseSchema = z.discriminatedUnion("tool_name", [
       tool_name: z.literal("resolve_member_id"),
       tool_call_id: z.string(),
       result: resolutionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("retrieve_plan_context"),
+      tool_call_id: z.string(),
+      result: retrievalSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("search_providers"),
+      tool_call_id: z.string(),
+      result: providerSearchSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("calculate_benefit"),
+      tool_call_id: z.string(),
+      result: estimateSchema,
     })
     .strict(),
 ]);

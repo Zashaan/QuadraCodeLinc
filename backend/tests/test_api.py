@@ -44,7 +44,13 @@ def test_session_prompt_and_allowlisted_tool(client: TestClient) -> None:
     assert "AI benefits assistant" in response["system_prompt"]
     assert "no identity verification" in response["system_prompt"]
     assert "annual_maximum_remaining" in response["system_prompt"]
-    assert [tool["name"] for tool in response["tools"]] == ["resolve_member_id", "get_member"]
+    assert [tool["name"] for tool in response["tools"]] == [
+        "resolve_member_id",
+        "get_member",
+        "retrieve_plan_context",
+        "search_providers",
+        "calculate_benefit",
+    ]
 
 
 def test_end_to_end_get_member_and_cleanup(client: TestClient) -> None:
@@ -113,6 +119,178 @@ def test_spoken_id_resolution_then_canonical_lookup(client: TestClient) -> None:
         },
     )
     assert repeat.json()["result"] == {"status": "repeat"}
+
+
+def test_member_context_survives_followups_invalid_ids_and_corrections() -> None:
+    store = SessionStore()
+    with TestClient(create_app(Settings(TOKEN), sessions=store)) as client:
+        session_id = start_session(client)
+        endpoint = f"/sessions/{session_id}/tools"
+        lookup = client.post(
+            endpoint,
+            headers=AUTH,
+            json={
+                "tool_name": "get_member",
+                "tool_call_id": "lookup",
+                "arguments": {"member_id": "DEMO001"},
+            },
+        )
+        assert lookup.status_code == 200
+        invalid = client.post(
+            endpoint,
+            headers=AUTH,
+            json={
+                "tool_name": "resolve_member_id",
+                "tool_call_id": "bad-correction",
+                "arguments": {"spoken_id": "demo zero zero two"},
+            },
+        )
+        assert invalid.json()["result"] == {"status": "repeat"}
+        context = client.post(
+            endpoint,
+            headers=AUTH,
+            json={
+                "tool_name": "retrieve_plan_context",
+                "tool_call_id": "followup",
+                "arguments": {"query": "What does that annual maximum mean?"},
+            },
+        )
+        assert context.status_code == 200
+        assert context.json()["result"]["status"] == "verified"
+        session = store.get(session_id)
+        assert session is not None
+        assert session.member_id == "DEMO001"
+        assert session.plan_id == "DEMO_DENTAL_PPO"
+        assert session.citations[0].source_id == "synthetic-demo-plan-2026"
+
+
+def test_valid_member_correction_replaces_prior_context() -> None:
+    from app.members.repository import SyntheticMemberRepository
+
+    demo = SyntheticMemberRepository().get_member("DEMO001")
+    assert demo is not None
+    known_demo: Member = demo
+
+    class TwoMemberRepository:
+        def get_member(self, member_id: str) -> Member | None:
+            if member_id == "DEMO001":
+                return known_demo
+            if member_id == "DEMO002":
+                return known_demo.model_copy(update={"member_id": "DEMO002"})
+            return None
+
+    store = SessionStore()
+    app = create_app(Settings(TOKEN), repository=TwoMemberRepository(), sessions=store)
+    with TestClient(app) as client:
+        session_id = start_session(client)
+        endpoint = f"/sessions/{session_id}/tools"
+        for spoken in ["demo zero zero two", "demo zero zero one"]:
+            response = client.post(
+                endpoint,
+                headers=AUTH,
+                json={
+                    "tool_name": "resolve_member_id",
+                    "tool_call_id": spoken.replace(" ", "-"),
+                    "arguments": {"spoken_id": spoken},
+                },
+            )
+            assert response.json()["result"]["status"] == "resolved"
+        session = store.get(session_id)
+        assert session is not None
+        assert session.member_id == "DEMO001"
+        assert session.latest_correction == "DEMO001"
+
+
+def test_provider_search_and_calculator_use_known_session_member(client: TestClient) -> None:
+    session_id = start_session(client)
+    endpoint = f"/sessions/{session_id}/tools"
+    client.post(
+        endpoint,
+        headers=AUTH,
+        json={
+            "tool_name": "get_member",
+            "tool_call_id": "member",
+            "arguments": {"member_id": "DEMO001"},
+        },
+    )
+    providers = client.post(
+        endpoint,
+        headers=AUTH,
+        json={
+            "tool_name": "search_providers",
+            "tool_call_id": "providers",
+            "arguments": {
+                "procedure": "crown",
+                "network_status": "in_network",
+                "radius_miles": 5,
+            },
+        },
+    )
+    assert providers.status_code == 200
+    assert providers.json()["result"]["providers"][0]["provider"]["provider_id"] == "SYNTH001"
+    estimate = client.post(
+        endpoint,
+        headers=AUTH,
+        json={
+            "tool_name": "calculate_benefit",
+            "tool_call_id": "estimate",
+            "arguments": {
+                "procedure": "crown",
+                "treatment_date": "2026-06-01",
+                "provider_id": "SYNTH001",
+            },
+        },
+    )
+    assert estimate.status_code == 200
+    result = estimate.json()["result"]
+    assert result["status"] == "estimated"
+    assert result["plan_payment"] == "600.00"
+    assert result["estimated_member_payment"] == "800.00"
+    assert result["annual_maximum_remaining_after"] == "200.00"
+
+
+def test_calculator_requests_exact_missing_values_without_inventing_fees(
+    client: TestClient,
+) -> None:
+    session_id = start_session(client)
+    response = client.post(
+        f"/sessions/{session_id}/tools",
+        headers=AUTH,
+        json={
+            "tool_name": "calculate_benefit",
+            "tool_call_id": "missing",
+            "arguments": {"member_id": "DEMO001", "procedure": "filling"},
+        },
+    )
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["status"] == "missing_input"
+    assert result["missing"] == [
+        "treatment_date",
+        "network_status",
+        "provider_charge",
+        "allowed_amount",
+        "fee_source",
+    ]
+    unknown_provider = client.post(
+        f"/sessions/{session_id}/tools",
+        headers=AUTH,
+        json={
+            "tool_name": "calculate_benefit",
+            "tool_call_id": "unknown-provider",
+            "arguments": {
+                "member_id": "DEMO001",
+                "procedure": "filling",
+                "treatment_date": "2026-06-01",
+                "provider_id": "NOTREAL",
+            },
+        },
+    )
+    assert unknown_provider.json()["result"] == {
+        "status": "unavailable",
+        "missing": [],
+        "message": "The requested provider record is unavailable.",
+    }
 
 
 @pytest.mark.parametrize("arguments", [{}, {"member_id": 123}, {"member_id": "X", "extra": 1}])
@@ -213,7 +391,7 @@ def test_session_stores_only_last_result() -> None:
             )
         session = store.get(session_id)
         assert session is not None
-        assert session.member_id == "UNKNOWN"
+        assert session.member_id == "DEMO001"
         assert session.last_tool_result is not None
         assert session.last_tool_result.status == "not_found"
     assert store.get(session_id) is None
@@ -223,3 +401,10 @@ def test_session_stores_only_last_result() -> None:
 def test_configuration_rejects_unsafe_tokens(token: str) -> None:
     with pytest.raises(ValueError, match="ABE_INTERNAL_TOKEN"):
         Settings(token)
+
+
+def test_aws_repository_modes_require_explicit_resource_ids() -> None:
+    with pytest.raises(ValueError, match="DYNAMODB_MEMBER_TABLE"):
+        Settings(TOKEN, member_repository="dynamodb")
+    with pytest.raises(ValueError, match="BEDROCK_KNOWLEDGE_BASE_ID"):
+        Settings(TOKEN, rag_provider="bedrock")

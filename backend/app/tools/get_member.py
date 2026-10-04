@@ -10,7 +10,7 @@ from app.tools.base import Tool
 class GetMemberArguments(StrictModel):
     member_id: Annotated[
         str,
-        Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9_-]+$"),
+        Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9]+$"),
     ]
 
     @field_validator("member_id")

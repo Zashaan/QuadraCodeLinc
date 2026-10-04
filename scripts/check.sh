@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
   .venv/bin/ruff format --check .
   .venv/bin/mypy
 )
+./scripts/smoke-benefits.sh
 (
   cd voice-gateway
   npm test
