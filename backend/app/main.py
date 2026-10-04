@@ -22,6 +22,7 @@ from app.config import Settings
 from app.conversation.sessions import SessionCapacityError, SessionStore
 from app.members.repository import DemoMemberRepository, MemberRepository
 from app.tools.get_member import GetMemberTool
+from app.tools.resolve_member_id import ResolveMemberIdTool
 
 logger = logging.getLogger("abe")
 logger.setLevel(logging.INFO)
@@ -44,7 +45,9 @@ def create_app(
 ) -> FastAPI:
     config = settings or Settings.from_environment()
     store = sessions or SessionStore()
-    member_tool = GetMemberTool(repository or DemoMemberRepository())
+    members = repository or DemoMemberRepository()
+    member_tool = GetMemberTool(members)
+    resolver = ResolveMemberIdTool(members)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -92,7 +95,7 @@ def create_app(
         return CreateSessionResponse(
             session_id=session.session_id,
             system_prompt=SYSTEM_PROMPT,
-            tools=[member_tool.definition],
+            tools=[resolver.definition, member_tool.definition],
         )
 
     @app.delete("/sessions/{session_id}", status_code=204, dependencies=[Depends(authenticate)])
@@ -111,6 +114,19 @@ def create_app(
         session = store.get(str(session_id))
         if session is None:
             raise HTTPException(404, "Session not found")
+        if body.tool_name == resolver.name:
+            log_event("tool_invoked", tool=resolver.name)
+            try:
+                resolution = resolver.invoke(body.arguments)
+            except ValidationError:
+                raise HTTPException(422, "Invalid tool input or result") from None
+            session.member_id = resolution.member_id
+            session.last_tool_call_id = body.tool_call_id
+            session.last_tool_result = None
+            log_event("member_id_resolved", status=resolution.status)
+            return InvokeToolResponse(
+                tool_name=resolver.name, tool_call_id=body.tool_call_id, result=resolution
+            )
         if body.tool_name != member_tool.name:
             raise HTTPException(400, "Unknown tool")
         log_event("tool_invoked", tool=member_tool.name)
