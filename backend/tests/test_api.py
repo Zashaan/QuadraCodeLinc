@@ -44,7 +44,7 @@ def test_session_prompt_and_allowlisted_tool(client: TestClient) -> None:
     assert "AI benefits assistant" in response["system_prompt"]
     assert "no identity verification" in response["system_prompt"]
     assert "annual_maximum_remaining" in response["system_prompt"]
-    assert [tool["name"] for tool in response["tools"]] == ["get_member"]
+    assert [tool["name"] for tool in response["tools"]] == ["resolve_member_id", "get_member"]
 
 
 def test_end_to_end_get_member_and_cleanup(client: TestClient) -> None:
@@ -77,6 +77,42 @@ def test_unknown_member_is_normal_tool_result(client: TestClient) -> None:
     )
     assert response.status_code == 200
     assert response.json()["result"] == {"status": "not_found", "member_id": "UNKNOWN"}
+
+
+def test_spoken_id_resolution_then_canonical_lookup(client: TestClient) -> None:
+    session_id = start_session(client)
+    endpoint = f"/sessions/{session_id}/tools"
+    response = client.post(
+        endpoint,
+        headers=AUTH,
+        json={
+            "tool_name": "resolve_member_id",
+            "tool_call_id": "resolve-1",
+            "arguments": {"spoken_id": "demo double zero one"},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["result"] == {"status": "resolved", "member_id": "DEMO001"}
+    lookup = client.post(
+        endpoint,
+        headers=AUTH,
+        json={
+            "tool_name": "get_member",
+            "tool_call_id": "lookup-1",
+            "arguments": {"member_id": response.json()["result"]["member_id"]},
+        },
+    )
+    assert lookup.json()["result"]["member"]["annual_maximum_remaining"] == 800
+    repeat = client.post(
+        endpoint,
+        headers=AUTH,
+        json={
+            "tool_name": "resolve_member_id",
+            "tool_call_id": "resolve-2",
+            "arguments": {"spoken_id": "maybe demo zero zero one"},
+        },
+    )
+    assert repeat.json()["result"] == {"status": "repeat"}
 
 
 @pytest.mark.parametrize("arguments", [{}, {"member_id": 123}, {"member_id": "X", "extra": 1}])

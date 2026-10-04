@@ -3,7 +3,7 @@ import type { ToolDefinition, ToolInvocation } from "./nova/types.js";
 
 const toolDefinition = z
   .object({
-    name: z.literal("get_member"),
+    name: z.enum(["get_member", "resolve_member_id"]),
     description: z.string().min(1),
     input_schema: z.record(z.string(), z.unknown()),
   })
@@ -37,6 +37,38 @@ const resultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("success"), member: memberSchema }).strict(),
   z
     .object({ status: z.literal("not_found"), member_id: z.string().min(1) })
+    .strict(),
+]);
+
+const canonicalId = z.string().regex(/^[A-Z0-9]{1,32}$/);
+const resolutionSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("resolved"), member_id: canonicalId }).strict(),
+  z.object({ status: z.literal("repeat") }).strict(),
+  z
+    .object({
+      status: z.literal("confirm"),
+      candidates: z
+        .array(canonicalId)
+        .min(2)
+        .max(16)
+        .refine((ids) => new Set(ids).size === ids.length),
+    })
+    .strict(),
+]);
+const toolResponseSchema = z.discriminatedUnion("tool_name", [
+  z
+    .object({
+      tool_name: z.literal("get_member"),
+      tool_call_id: z.string(),
+      result: resultSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("resolve_member_id"),
+      tool_call_id: z.string(),
+      result: resolutionSchema,
+    })
     .strict(),
 ]);
 
@@ -137,21 +169,14 @@ export function createBackendClient(
         tool_call_id: tool.toolUseId,
         arguments: tool.input,
       };
-      const result = z
-        .object({
-          tool_name: z.literal("get_member"),
-          tool_call_id: z.string(),
-          result: resultSchema,
-        })
-        .strict()
-        .safeParse(
-          await request(
-            `/sessions/${encodeURIComponent(sessionId)}/tools`,
-            "POST",
-            body,
-            signal,
-          ),
-        );
+      const result = toolResponseSchema.safeParse(
+        await request(
+          `/sessions/${encodeURIComponent(sessionId)}/tools`,
+          "POST",
+          body,
+          signal,
+        ),
+      );
       if (
         !result.success ||
         result.data.tool_call_id !== tool.toolUseId ||
