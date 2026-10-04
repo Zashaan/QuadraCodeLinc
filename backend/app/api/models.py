@@ -4,6 +4,7 @@ from pydantic import Field, JsonValue
 
 from app.models import StrictModel
 from app.tools.base import ToolDefinition
+from app.tools.benefits import BenefitToolResult
 from app.tools.get_member import GetMemberResult
 from app.tools.resolve_member_id import ResolveMemberIdResult
 
@@ -27,4 +28,4 @@ class InvokeToolRequest(StrictModel):
 class InvokeToolResponse(StrictModel):
     tool_name: str
     tool_call_id: str
-    result: GetMemberResult | ResolveMemberIdResult
+    result: GetMemberResult | ResolveMemberIdResult | BenefitToolResult

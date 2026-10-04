@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 
 import pytest
@@ -24,6 +25,12 @@ def test_demo_member_has_exact_stored_balances() -> None:
         "deductible_used": 50,
         "deductible_remaining": 0,
         "fsa_balance": 350,
+        "employer_id": "DEMO_EMPLOYER",
+        "plan_year": 2026,
+        "state": "NC",
+        "zip_code": "27401",
+        "balances_as_of": date(2026, 10, 4),
+        "synthetic": True,
     }
 
 

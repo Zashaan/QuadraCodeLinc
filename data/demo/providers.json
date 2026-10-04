@@ -1,0 +1,88 @@
+[
+  {
+    "provider_id": "DEMO_P1",
+    "name": "Synthetic Dental Office DEMO_P1",
+    "plan_id": "DEMO_DENTAL_PPO",
+    "network_status": "in_network",
+    "zip_code": "27401",
+    "distances_miles": {
+      "27401": 2
+    },
+    "specialty": "general dentistry",
+    "fees": {
+      "CROWN": {
+        "provider_charge": "1400.00",
+        "allowed_amount": "1200.00",
+        "source": "Synthetic demo fee fixture"
+      },
+      "FILLING": {
+        "provider_charge": "1400.00",
+        "allowed_amount": "1200.00",
+        "source": "Synthetic demo fee fixture"
+      },
+      "ROOT_CANAL": {
+        "provider_charge": "1400.00",
+        "allowed_amount": "1200.00",
+        "source": "Synthetic demo fee fixture"
+      }
+    },
+    "source": "SYNTHETIC DEMO DATA \u2014 NOT REAL LINCOLN DATA",
+    "verification_status": "synthetic",
+    "verified_on": "2026-10-04",
+    "synthetic": true
+  },
+  {
+    "provider_id": "DEMO_P2",
+    "name": "Synthetic Dental Office DEMO_P2",
+    "plan_id": "DEMO_DENTAL_PPO",
+    "network_status": "out_of_network",
+    "zip_code": "27408",
+    "distances_miles": {
+      "27401": 7
+    },
+    "specialty": "general dentistry",
+    "fees": {
+      "CROWN": {
+        "provider_charge": "1800.00",
+        "allowed_amount": "1200.00",
+        "source": "Synthetic demo fee fixture"
+      },
+      "FILLING": {
+        "provider_charge": "1800.00",
+        "allowed_amount": "1200.00",
+        "source": "Synthetic demo fee fixture"
+      },
+      "ROOT_CANAL": {
+        "provider_charge": "1800.00",
+        "allowed_amount": "1200.00",
+        "source": "Synthetic demo fee fixture"
+      }
+    },
+    "source": "SYNTHETIC DEMO DATA \u2014 NOT REAL LINCOLN DATA",
+    "verification_status": "synthetic",
+    "verified_on": "2026-10-04",
+    "synthetic": true
+  },
+  {
+    "provider_id": "DEMO_P3",
+    "name": "Synthetic Dental Office DEMO_P3",
+    "plan_id": "DEMO_DENTAL_PPO",
+    "network_status": "in_network",
+    "zip_code": "27408",
+    "distances_miles": {
+      "27401": 9
+    },
+    "specialty": "endodontics",
+    "fees": {
+      "ROOT_CANAL": {
+        "provider_charge": "1600.00",
+        "allowed_amount": "1400.00",
+        "source": "Synthetic demo fee fixture"
+      }
+    },
+    "source": "SYNTHETIC DEMO DATA \u2014 NOT REAL LINCOLN DATA",
+    "verification_status": "synthetic",
+    "verified_on": "2026-10-04",
+    "synthetic": true
+  }
+]

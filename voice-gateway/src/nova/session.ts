@@ -74,6 +74,7 @@ export class StreamingNovaSession implements NovaSession {
   private readonly toolBlocks = new Map<string, ToolBlock>();
   private readonly seenToolIds = new Set<string>();
   private readonly interruptedCompletions = new Set<string>();
+  private readonly assistantTextBlocks = new Set<string>();
   private activeTools = 0;
   private running: Promise<void> | undefined;
   private closing: Promise<void> | undefined;
@@ -263,6 +264,11 @@ export class StreamingNovaSession implements NovaSession {
     if (this.state !== "active") return;
     if (event.contentStart) {
       const start = record(event.contentStart);
+      if (start.type === "TEXT" && start.role === "ASSISTANT") {
+        if (this.assistantTextBlocks.size >= 32)
+          throw new Error("Too many text blocks.");
+        this.assistantTextBlocks.add(identifier(start.contentId));
+      }
       if (start.type === "TOOL") {
         if (this.toolBlocks.size + this.activeTools >= 4)
           throw new Error("Too many Nova tools.");
@@ -271,6 +277,33 @@ export class StreamingNovaSession implements NovaSession {
           id: "",
           json: "",
         });
+      }
+    }
+    if (event.textOutput) {
+      const output = record(event.textOutput);
+      // AWS samples also emit a JSON interruption marker in assistant text.
+      // Only recognize the exact structured marker, never ordinary caller text.
+      if (
+        this.assistantTextBlocks.has(identifier(output.contentId)) &&
+        typeof output.content === "string" &&
+        output.content.length <= 100
+      ) {
+        let marker: unknown;
+        try {
+          marker = JSON.parse(output.content);
+        } catch {
+          marker = undefined;
+        }
+        if (
+          marker &&
+          typeof marker === "object" &&
+          !Array.isArray(marker) &&
+          Object.keys(marker).length === 1 &&
+          "interrupted" in marker &&
+          marker.interrupted === true
+        ) {
+          this.interrupt(identifier(output.completionId));
+        }
       }
     }
     if (event.audioOutput) {
@@ -307,15 +340,15 @@ export class StreamingNovaSession implements NovaSession {
     if (event.contentEnd) {
       const end = record(event.contentEnd);
       if (end.stopReason === "INTERRUPTED") {
-        this.interruptedCompletions.add(identifier(end.completionId));
-        if (this.interruptedCompletions.size > 256)
-          throw new Error("Nova interruption limit reached.");
-        this.callbacks.onInterrupted();
+        this.interrupt(identifier(end.completionId));
       }
       const contentId = identifier(end.contentId);
+      this.assistantTextBlocks.delete(contentId);
       const block = this.toolBlocks.get(contentId);
       if (block) {
         this.toolBlocks.delete(contentId);
+        // An interrupted partial tool request is not a broken conversation.
+        if (end.stopReason === "INTERRUPTED") return;
         if (end.stopReason !== "TOOL_USE" || !block.id)
           throw new Error("Incomplete Nova tool.");
         if (this.seenToolIds.has(block.id) || this.seenToolIds.size >= 128)
@@ -327,6 +360,14 @@ export class StreamingNovaSession implements NovaSession {
         });
       }
     }
+  }
+
+  private interrupt(completionId: string): void {
+    if (this.interruptedCompletions.has(completionId)) return;
+    this.interruptedCompletions.add(completionId);
+    if (this.interruptedCompletions.size > 256)
+      throw new Error("Nova interruption limit reached.");
+    this.callbacks.onInterrupted();
   }
 
   private async executeTool(block: ToolBlock): Promise<void> {
@@ -404,6 +445,7 @@ export class StreamingNovaSession implements NovaSession {
     this.abort.abort();
     this.queue.end(true);
     this.toolBlocks.clear();
+    this.assistantTextBlocks.clear();
     this.transport.destroy();
     try {
       if (error) this.callbacks.onError(error);

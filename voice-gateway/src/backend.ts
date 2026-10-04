@@ -1,9 +1,22 @@
 import { z } from "zod";
+import {
+  calculationResultSchema,
+  contextResultSchema,
+  providerResultSchema,
+  retrievalResultSchema,
+} from "./benefit-schemas.js";
 import type { ToolDefinition, ToolInvocation } from "./nova/types.js";
 
 const toolDefinition = z
   .object({
-    name: z.enum(["get_member", "resolve_member_id"]),
+    name: z.enum([
+      "get_member",
+      "resolve_member_id",
+      "update_conversation_context",
+      "retrieve_plan_context",
+      "search_providers",
+      "calculate_benefit",
+    ]),
     description: z.string().min(1),
     input_schema: z.record(z.string(), z.unknown()),
   })
@@ -23,6 +36,12 @@ const memberSchema = z
     member_id: z.string().min(1),
     name: z.string().min(1),
     plan_id: z.string().min(1),
+    employer_id: z.string().min(1),
+    plan_year: z.number().int().min(2000).max(2100),
+    state: z.string().regex(/^[A-Z]{2}$/),
+    zip_code: z.string().regex(/^\d{5}$/),
+    balances_as_of: z.iso.date(),
+    synthetic: z.literal(true),
     currency: z.literal("USD"),
     annual_maximum: amount,
     annual_maximum_used: amount,
@@ -56,6 +75,34 @@ const resolutionSchema = z.discriminatedUnion("status", [
     .strict(),
 ]);
 const toolResponseSchema = z.discriminatedUnion("tool_name", [
+  z
+    .object({
+      tool_name: z.literal("update_conversation_context"),
+      tool_call_id: z.string(),
+      result: contextResultSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("retrieve_plan_context"),
+      tool_call_id: z.string(),
+      result: retrievalResultSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("search_providers"),
+      tool_call_id: z.string(),
+      result: providerResultSchema,
+    })
+    .strict(),
+  z
+    .object({
+      tool_name: z.literal("calculate_benefit"),
+      tool_call_id: z.string(),
+      result: calculationResultSchema,
+    })
+    .strict(),
   z
     .object({
       tool_name: z.literal("get_member"),

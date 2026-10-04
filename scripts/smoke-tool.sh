@@ -4,4 +4,4 @@ cd "$(dirname "$0")/.."
 set -a
 if [[ -f .env ]]; then source ./.env; fi
 set +a
-exec backend/.venv/bin/python scripts/smoke-tool.py
+exec backend/.venv/bin/python scripts/with-timeout.py 30 backend/.venv/bin/python scripts/smoke-tool.py
