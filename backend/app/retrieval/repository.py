@@ -1,17 +1,60 @@
 """Retrieval only: scoped evidence, never generated answers or arithmetic rules."""
 
 import json
+import logging
 import re
 from math import isfinite
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
+from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 from pydantic import Field, TypeAdapter
 
 from app.benefits.models import Source
 from app.benefits.repository import DEMO_PATH
 from app.models import StrictModel
+
+
+def rag_log(event: str, **fields: str | int) -> None:
+    # Explicit diagnostics only: never query text, member details or exception messages.
+    logging.getLogger("abe").info(json.dumps({"event": event, **fields}))
+
+
+def canonical_s3_uri(value: object) -> str | None:
+    """Normalize AWS S3 location variants, retaining the bucket/key trust boundary."""
+    if not isinstance(value, str):
+        return None
+    parsed = urlparse(value)
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        return None
+    if parsed.scheme == "s3" and parsed.netloc and parsed.path:
+        return f"s3://{parsed.netloc}/{unquote(parsed.path.lstrip('/'))}"
+    if parsed.scheme != "https":
+        return None
+    host = parsed.hostname or ""
+    virtual = re.fullmatch(r"(.+)\.s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com", host)
+    if virtual and parsed.path:
+        return f"s3://{virtual[1]}/{unquote(parsed.path.lstrip('/'))}"
+    if re.fullmatch(r"s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com", host):
+        bucket, _, key = parsed.path.lstrip("/").partition("/")
+        if bucket and key:
+            return f"s3://{bucket}/{unquote(key)}"
+    return None
+
+
+def result_source_uri(result: dict[str, Any]) -> str | None:
+    candidates = {
+        uri
+        for value in (
+            result.get("documentId"),
+            result.get("location", {}).get("s3Location", {}).get("uri"),
+            result.get("metadata", {}).get("_source_uri"),
+        )
+        if (uri := canonical_s3_uri(value)) is not None
+    }
+    # Conflicting provenance must not be rescued by a matching basename.
+    return next(iter(candidates)) if len(candidates) == 1 else None
 
 
 class PlanScope(StrictModel):
@@ -99,6 +142,7 @@ class BedrockKnowledgeBaseRetriever:
         self._s3 = s3_client
         self._region = region
         self._manifest: dict[str, dict[str, Any]] | None = None
+        self._search_type = "vectorSearchConfiguration"
 
     def _load_manifest(self) -> dict[str, dict[str, Any]]:
         if self._manifest is not None:
@@ -137,11 +181,15 @@ class BedrockKnowledgeBaseRetriever:
 
     def _retrieve_manifest(self, query: str, scope: PlanScope) -> list[PlanChunk]:
         manifest = self._load_manifest()
-        titles = [e["title"] for e in manifest.values() if e.get("plan_id") == scope.plan_id]
-        response = self._client.retrieve(
-            knowledgeBaseId=self._id,
-            retrievalQuery={"text": f"{scope.plan_id} {'; '.join(titles)[:300]}: {query}"},
-            retrievalConfiguration={"vectorSearchConfiguration": {"numberOfResults": 8}},
+        titles = [
+            e["title"]
+            for e in manifest.values()
+            if e.get("plan_id") == scope.plan_id and e.get("document_type") == "summary_of_benefits"
+        ]
+        if not titles:
+            titles = [e["title"] for e in manifest.values() if e.get("plan_id") == scope.plan_id]
+        response = self._search(
+            f"{scope.plan_id} {'; '.join(titles)[:300]}: {query}", {"numberOfResults": 8}
         )
         if response.get("guardrailAction") == "INTERVENED":
             return []
@@ -150,8 +198,8 @@ class BedrockKnowledgeBaseRetriever:
         }
         ranked = []
         for result in response.get("retrievalResults", [])[:8]:
-            uri = result.get("location", {}).get("s3Location", {}).get("uri")
-            entry = manifest.get(uri)
+            uri = result_source_uri(result)
+            entry = manifest.get(uri) if uri else None
             text = result.get("content", {}).get("text")
             if not entry or not isinstance(text, str) or not text or len(text) > 6000:
                 continue
@@ -176,7 +224,18 @@ class BedrockKnowledgeBaseRetriever:
             indicated = result.get("metadata", {}).get("plan_id")
             if indicated is not None and indicated not in (scope.plan_id, "GLOBAL", "global"):
                 continue
+            raw_page = result.get("metadata", {}).get("_excerpt_page_number")
+            page = (
+                int(raw_page)
+                if isinstance(raw_page, (int, float))
+                and not isinstance(raw_page, bool)
+                and isfinite(raw_page)
+                and raw_page >= 1
+                and float(raw_page).is_integer()
+                else None
+            )
             source = Source(
+                page=page,
                 source_id=entry["document_id"],
                 document=entry["title"],
                 plan_id=entry.get("plan_id") or "GLOBAL",
@@ -184,25 +243,76 @@ class BedrockKnowledgeBaseRetriever:
                 synthetic=True,
                 uri=uri,
             )
-            ranked.append((entry.get("plan_id") is None, PlanChunk(text=text, source=source)))
+            priority = (
+                0
+                if entry.get("plan_id") == scope.plan_id
+                and entry.get("document_type") == "summary_of_benefits"
+                else 1
+                if entry.get("plan_id") == scope.plan_id
+                else 2
+            )
+            ranked.append((priority, PlanChunk(text=text, source=source)))
         ranked.sort(key=lambda pair: pair[0])
         return [chunk for _, chunk in ranked[:4]]
 
+    def _search(self, query: str, configuration: dict[str, Any]) -> Any:
+        try:
+            response = self._client.retrieve(
+                knowledgeBaseId=self._id,
+                retrievalQuery={"text": query},
+                retrievalConfiguration={self._search_type: configuration},
+            )
+        except ClientError as error:
+            detail = error.response.get("Error", {})
+            if (
+                self._search_type != "vectorSearchConfiguration"
+                or detail.get("Code") != "ValidationException"
+                or "vectorSearchConfiguration is not supported for managed knowledge bases"
+                not in detail.get("Message", "")
+            ):
+                raise
+            # The managed API explicitly identifies its supported configuration.
+            # Cache this per adapter; do not retry auth, timeout, or other failures.
+            self._search_type = "managedSearchConfiguration"
+            response = self._client.retrieve(
+                knowledgeBaseId=self._id,
+                retrievalQuery={"text": query},
+                retrievalConfiguration={self._search_type: configuration},
+            )
+        rag_log(
+            "rag_results_count",
+            count=len(response.get("retrievalResults", [])),
+            search_type=self._search_type,
+        )
+        return response
+
     def retrieve(self, query: str, scope: PlanScope) -> list[PlanChunk]:
+        rag_log("rag_query_started", provider="bedrock")
+        try:
+            chunks = self._retrieve(query, scope)
+        except Exception as error:
+            rag_log("rag_query_failed", error_type=type(error).__name__)
+            raise
+        rag_log("rag_evidence_count", count=len(chunks))
+        for chunk in chunks:
+            rag_log(
+                "rag_result_source",
+                document=(chunk.source.uri or chunk.source.document).rsplit("/", 1)[-1],
+            )
+        return chunks
+
+    def _retrieve(self, query: str, scope: PlanScope) -> list[PlanChunk]:
         if self._manifest_uri:
             return self._retrieve_manifest(query, scope)
         filters = [
             {"equals": {"key": k, "value": v}}
             for k, v in scope.model_dump(exclude_none=True).items()
         ]
-        response = self._client.retrieve(
-            knowledgeBaseId=self._id,
-            retrievalQuery={"text": query},
-            retrievalConfiguration={
-                "vectorSearchConfiguration": {
-                    "numberOfResults": 4,
-                    "filter": {"andAll": filters} if len(filters) > 1 else filters[0],
-                }
+        response = self._search(
+            f"{scope.plan_id}: {query}",
+            {
+                "numberOfResults": 4,
+                "filter": {"andAll": filters} if len(filters) > 1 else filters[0],
             },
         )
         if response.get("guardrailAction") == "INTERVENED":

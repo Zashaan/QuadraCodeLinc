@@ -160,6 +160,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         log_event("backend_started")
+        log_event(
+            "rag_provider_configured",
+            provider=config.rag_provider,
+            region=config.aws_region,
+            knowledge_base_id=config.bedrock_knowledge_base_id,
+        )
         yield
         store.clear()
         log_event("backend_stopped")
