@@ -1,4 +1,4 @@
-# Abe — Quadra CodeLinc
+# Abe
 
 Milestone 3 adds response-scoped barge-in recovery, existing AWS demo adapters and a
 deterministic scenario optimizer. See [setup, verified AWS limitations and phone acceptance](docs/milestone-3.md).
